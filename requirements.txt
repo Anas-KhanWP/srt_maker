@@ -1,0 +1,15 @@
+ass==0.5.4
+beautifulsoup4==4.13.4
+certifi==2025.4.26
+chardet==5.2.0
+charset-normalizer==3.4.2
+deep-translator==1.11.4
+idna==3.10
+PyQt5==5.15.11
+PyQt5-Qt5==5.15.2
+PyQt5_sip==12.17.0
+pysrt==1.1.2
+requests==2.32.4
+soupsieve==2.7
+typing_extensions==4.14.0
+urllib3==2.4.0
