@@ -25,12 +25,20 @@ LANGUAGES = {
     "Filipino": "tl"
 }
 
-def translate_text(text, dest_lang):
+def init_translator(dest_lang):
+    """Initialize the GoogleTranslator with the specified destination language."""
+    try:
+        translator = GoogleTranslator(source='auto', target=dest_lang)
+        return translator
+    except Exception as e:
+        print(f"Error initializing translator for {dest_lang}: {e}")
+        return None
+
+def translate_text(text, translator):
     """Translate text using GoogleTranslator."""
     if not text:
         return text
     try:
-        translator = GoogleTranslator(source='auto', target=dest_lang)
         return translator.translate(text)
     except Exception as e:
         print(f"Error translating text: {e}")
@@ -39,9 +47,10 @@ def translate_text(text, dest_lang):
 def translate_srt(input_file, output_file, dest_lang):
     """Translate an SRT subtitle file and save the result."""
     subs = pysrt.open(input_file)
+    translator = init_translator(dest_lang)
     for index, sub in enumerate(subs):
         txt = sub.text.split(":")[-1] if ":" in sub.text else sub.text
-        sub.text = translate_text(txt, dest_lang)
+        sub.text = translate_text(txt, translator)
         print(f"Processed {index+1}/{len(subs)} | {dest_lang} | Text => {sub.text}")
     subs.save(output_file, encoding="utf-8")
 
@@ -51,12 +60,13 @@ def translate_ass_to_srt(input_file, output_file, dest_lang):
         doc = ass.parse(file)
 
     subs = pysrt.SubRipFile()
+    translator = init_translator(dest_lang)
     for index, event in enumerate(doc.events, start=1):
         start_time = pysrt.SubRipTime.from_ordinal(event.start.total_seconds() * 1000)
         end_time = pysrt.SubRipTime.from_ordinal(event.end.total_seconds() * 1000)
         
         txt = event.text.split(":")[-1] if ":" in event.text else event.text
-        translated_text = translate_text(txt, dest_lang)
+        translated_text = translate_text(txt, translator)
 
         print(f"Processed {index}/{len(doc.events)} | {dest_lang} | Text => {translated_text}")
         subs.append(pysrt.SubRipItem(index, start_time, end_time, translated_text))
@@ -67,7 +77,9 @@ def translate_plain_txt(input_file, output_file, dest_lang):
     """Translate a plain text file and save as an SRT subtitle."""
     with open(input_file, "r", encoding="utf-8") as file:
         text = file.read()
-    translated_text = translate_text(text, dest_lang)
+    
+    translator = init_translator(dest_lang)
+    translated_text = translate_text(text, translator)
     
     subs = pysrt.SubRipFile([pysrt.SubRipItem(1, pysrt.SubRipTime(0,0,0,0), pysrt.SubRipTime(0,0,10,0), translated_text)])
     subs.save(output_file, encoding="utf-8")
