@@ -31,12 +31,14 @@ Subtitle translation is tedious and repetitive. SRT Maker automates this process
 
 ## 📦 Features & Screenshots
 
-- **🌍 Multi-language Support:** Instantly translate subtitles into 15+ languages.
+- **🌍 Multi-language Support:** Instantly translate subtitles into 100+ languages from Google Translate.
 - **🗂️ Batch Processing:** Translate a single file or an entire folder at once.
 - **🔄 Format Conversion:** Convert `.ass` and plain `.txt` files to `.srt` with translation.
-- **🖱️ Simple GUI:** User-friendly interface powered by PyQt5.
-- **💾 Organized Output:** Saves translated files in neatly named folders.
-- **⚡ Fast & Automated:** No manual copy-pasting or web tools needed.
+- **🖱️ Modern UI:** User-friendly tabbed interface with dark mode.
+- **💾 Organized Output:** Customizable output organization with folder options.
+- **⚡ Fast & Automated:** Translation caching for improved performance.
+- **⚙️ Customizable Settings:** Configure languages, output options, and more.
+- **📊 Detailed Progress:** Multi-level progress tracking for files, languages, and subtitles.
 
 ### Screenshots
 
@@ -91,9 +93,20 @@ python main.py
 
 ### 4. Using The Tool
 
-- **Choose** to process a single file or an entire folder.
-- **Select** – your subtitle files (.srt, .ass, .txt).
-- **Wait** – For Translations To Complete. Output appears in a New Folder in the selected Direcotry.
+#### Main Tab
+- **Select Files:** Choose a single file or an entire folder of subtitle files.
+- **View Languages:** See all configured languages as tags that will be processed.
+- **Start Translation:** Click the Start button to begin the translation process.
+- **Monitor Progress:** Track file, language, and subtitle progress in real-time.
+
+#### Settings Tab
+- **Configure Languages:** Select from 100+ languages supported by Google Translate.
+- **Output Options:** Choose how files are organized and handled.
+- **Translation Settings:** Configure batch size and retry options.
+- **Cache Management:** Enable/disable caching and clear the cache when needed.
+
+#### About Tab
+- View application information, features, and credits.
 
 ---
 
@@ -118,9 +131,10 @@ Sample Output:
 
 ### Use Cases
 
-- **YouTube Creators:** Instantly Provide Subtitles in Multiple Languages.
-- **Educators:** Translate Lecture Subtitles for International Students.
-- **Film Distributors** – Localize Content For Global Audiences.
+- **YouTube Creators:** Instantly provide subtitles in multiple languages.
+- **Educators:** Translate lecture subtitles for international students.
+- **Film Distributors:** Localize content for global audiences.
+- **Content Creators:** Make videos accessible to wider audiences.
 
 ---
 
@@ -128,8 +142,9 @@ Sample Output:
 
 ```bash
 srt_maker/
-├── main.py
-├── requirements.txt
+├── main.py           # Main application code
+├── settings.json     # User settings and preferences
+├── requirements.txt  # Dependencies
 └── .gitignore
 ```
 

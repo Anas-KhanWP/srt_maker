@@ -1,0 +1,26 @@
+{
+    "languages": {
+        "Afrikaans": "af",
+        "Arabic": "ar",
+        "Bengali": "bn",
+        "Dutch": "nl",
+        "Filipino": "tl",
+        "German": "de",
+        "Indonesian": "id",
+        "Japanese": "ja",
+        "Malayalam": "ml",
+        "Persian": "fa",
+        "Portuguese": "pt",
+        "Russian": "ru",
+        "Spanish": "es",
+        "Tamil": "ta",
+        "Telugu": "te",
+        "Turkish": "tr"
+    },
+    "organize_by_file": true,
+    "move_original": true,
+    "overwrite_existing": false,
+    "batch_size": 60,
+    "retry_count": 3,
+    "enable_cache": true
+}
