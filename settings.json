@@ -22,5 +22,46 @@
     "overwrite_existing": false,
     "batch_size": 60,
     "retry_count": 1,
-    "enable_cache": true
+    "enable_cache": true,
+    "profiles": {
+        "Default": {
+            "Arabic": "ar",
+            "Bengali": "bn",
+            "Chinese (Simplified)": "zh-CN",
+            "Dutch": "nl",
+            "Filipino": "tl",
+            "German": "de",
+            "Indonesian": "id",
+            "Japanese": "ja",
+            "Malayalam": "ml",
+            "Persian": "fa",
+            "Portuguese": "pt",
+            "Russian": "ru",
+            "Spanish": "es",
+            "Tamil": "ta",
+            "Telugu": "te",
+            "Turkish": "tr"
+        }
+    },
+    "recent_files": [
+        "D:\\Drama Subtitles\\Ishq Hai SRT\\Ishq Hai Episode 35 & 36 Part 1..txt",
+        "D:\\Drama Subtitles\\Ishq Hai SRT\\Ishq Hai Episode 35 & 36 Part 2..txt",
+        "D:\\Drama Subtitles\\Ishq Hai SRT\\Ishq Hai Episode 5 & 6 Part 1..txt",
+        "D:\\Drama Subtitles\\Ishq Hai SRT\\Ishq Hai Episode 5 & 6 Part 2..txt",
+        "D:\\Drama Subtitles\\Ishq Hai SRT\\Ishq Hai Episode 7 & 8 Part 1..txt",
+        "D:\\Drama Subtitles\\Ishq Hai SRT\\Ishq Hai Episode 7 & 8 Part 2..txt",
+        "D:\\Drama Subtitles\\Ishq Hai SRT\\Ishq Hai Episode 9 & 10 Part 1..txt",
+        "D:\\Drama Subtitles\\Ishq Hai SRT\\Ishq Hai Episode 9 & 10 Part 2..txt",
+        "D:\\Drama Subtitles\\Ishq Hai SRT\\Ishq Hai Last Episode 37 & 38 Part 1..txt",
+        "D:\\Drama Subtitles\\Ishq Hai SRT\\Ishq Hai Last Episode 37 & 38 Part 2..txt"
+    ],
+    "watchlist": [
+        "D:/Drama Subtitles/Main Mantoo Nahi Hoon",
+        "D:/Drama Subtitles/Parwarish",
+        "D:/Drama Subtitles/Sher SRT (COMPLETED)"
+    ],
+    "ui_language": "en",
+    "output_naming": "{filename}_{language}",
+    "output_encoding": "utf-8",
+    "layout_state": "01d9d0cb000300000000006300000045000003e8000003b30000006400000064000003e7000003b200000000000000000a000000006400000064000003e7000003b2"
 }

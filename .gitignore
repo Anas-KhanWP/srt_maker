@@ -1,2 +1,6 @@
 venv
 cache
+settings.json
+profiles.json
+recent_files.json
+*.json

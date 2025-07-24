@@ -5,10 +5,149 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
+from datetime import datetime
 from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtCore import QThread, pyqtSignal, QTimer, QSize, QRect, QPoint
+from PyQt5.QtCore import QThread, pyqtSignal, QTimer, QSize, QRect, QPoint, QFileSystemWatcher, QTranslator, QLocale
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QFont, QPixmap, QIcon
+from PyQt5.QtGui import QFont, QPixmap, QIcon, QKeySequence
+
+# Comprehensive UI texts for translation
+UI_TEXTS = {
+    'app_title': 'Subtitle Translator Pro',
+    'main_tab': 'Main',
+    'settings_tab': 'Settings',
+    'about_tab': 'About',
+    'preview_tab': 'Preview',
+    'watch_tab': 'Watch Folder',
+    'stats_tab': 'Statistics',
+    'file_selection': 'File Selection',
+    'select_single_file': 'Select Single File',
+    'select_folder': 'Select Folder',
+    'start_translation': 'Start Translation',
+    'stop': 'Stop',
+    'clear_logs': 'Clear Logs',
+    'open_output_folder': 'Open Output Folder',
+    'language_settings': 'Language Settings',
+    'output_settings': 'Output Settings',
+    'translation_settings': 'Translation Settings',
+    'cache_settings': 'Cache Settings',
+    'ui_settings': 'UI Settings',
+    'output_naming': 'Output Naming',
+    'interface_language': 'Interface Language',
+    'template': 'Template',
+    'encoding': 'Encoding',
+    'save_settings': 'Save Settings',
+    'languages_to_process': 'Languages to Process',
+    'translation_progress': 'Translation Progress',
+    'files': 'Files',
+    'languages': 'Languages',
+    'subtitles': 'Subtitles',
+    'folder_monitor': 'Folder Monitor',
+    'monitored_folders': 'Monitored Folders',
+    'controls': 'Controls',
+    'activity_log': 'Activity Log',
+    'add': 'Add',
+    'remove': 'Remove',
+    'start_monitoring': 'Start Monitoring',
+    'stop_monitoring': 'Stop Monitoring',
+    'auto_translate_detected': 'Auto-translate detected files',
+    'clear': 'Clear',
+    'file_preview': 'File Preview',
+    'file': 'File',
+    'translation_statistics': 'Translation Statistics',
+    'current_session': 'Current Session',
+    'reset_statistics': 'Reset Statistics',
+    'version': 'Version',
+    'features': 'Features',
+    'credits': 'Credits',
+    'keyboard_shortcuts': 'Keyboard Shortcuts',
+    'batch_size': 'Batch Size',
+    'retry_count': 'Retry Count',
+    'enable_cache': 'Enable translation cache',
+    'clear_cache': 'Clear Cache',
+    'cache_size': 'Cache size',
+    'create_folder_each_file': 'Create separate folder for each file',
+    'move_original_folder': 'Move original file to output folder',
+    'overwrite_existing': 'Overwrite existing translations',
+    'no_files_selected': 'No files selected',
+    'no_languages_selected': 'No languages selected. Please go to Settings tab.',
+    'change_languages_settings': 'To add or remove languages, go to the Settings tab.',
+    'search': 'Search',
+    'filter_languages': 'Type to filter languages...',
+    'select_all': 'Select All',
+    'deselect_all': 'Deselect All',
+    'profile': 'Profile',
+    'select_profile': '-- Select Profile --',
+    'queue': 'Queue',
+    'status': 'Status',
+    'stopped': 'Stopped',
+    'monitoring': 'Monitoring'
+}
+
+# Cache for translated UI texts
+TRANSLATED_CACHE = {}
+
+class UITranslationWorker(QThread):
+    progress = pyqtSignal(str, int, int)  # language, current, total
+    finished = pyqtSignal()
+    
+    def __init__(self):
+        super().__init__()
+        self.should_stop = False
+    
+    def run(self):
+        languages = list(LANGUAGES.values())
+        total_langs = len(languages)
+        
+        for i, lang_code in enumerate(languages):
+            if self.should_stop:
+                break
+                
+            if lang_code == 'en':  # Skip English
+                continue
+                
+            self.progress.emit(lang_code, i + 1, total_langs)
+            
+            # Check if translations already exist for this language
+            missing_translations = []
+            for key in UI_TEXTS.keys():
+                cache_key = f"{lang_code}_{key}"
+                if cache_key not in TRANSLATED_CACHE:
+                    missing_translations.append(key)
+            
+            if missing_translations:
+                try:
+                    translator = GoogleTranslator(source='en', target=lang_code)
+                    
+                    # Translate in batches
+                    for j in range(0, len(missing_translations), 10):
+                        if self.should_stop:
+                            break
+                            
+                        batch = missing_translations[j:j+10]
+                        texts_to_translate = [UI_TEXTS[key] for key in batch]
+                        
+                        # Batch translate
+                        batch_text = "\n\n\n".join(texts_to_translate)
+                        translated_batch = translator.translate(batch_text)
+                        translations = translated_batch.split("\n\n\n")
+                        
+                        # Store in cache
+                        for k, key in enumerate(batch):
+                            if k < len(translations):
+                                cache_key = f"{lang_code}_{key}"
+                                TRANSLATED_CACHE[cache_key] = translations[k].strip()
+                        
+                        time.sleep(0.1)  # Small delay to avoid rate limiting
+                        
+                except Exception as e:
+                    print(f"Error translating to {lang_code}: {e}")
+                    continue
+        
+        self.finished.emit()
+    
+    def stop(self):
+        self.should_stop = True
 
 # Flow Layout for language tags
 class FlowLayout(QLayout):
@@ -86,6 +225,61 @@ class FlowLayout(QLayout):
             lineHeight = max(lineHeight, item.sizeHint().height())
         
         return y + lineHeight - rect.y() + self.margin
+
+class TranslationStats:
+    def __init__(self):
+        self.reset()
+    
+    def reset(self):
+        self.files_processed = 0
+        self.languages_processed = 0
+        self.subtitles_translated = 0
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.start_time = None
+        self.end_time = None
+        self.errors = 0
+    
+    def start_session(self):
+        self.start_time = datetime.now()
+    
+    def end_session(self):
+        self.end_time = datetime.now()
+    
+    def get_duration(self):
+        if self.start_time and self.end_time:
+            return (self.end_time - self.start_time).total_seconds()
+        return 0
+    
+    def get_cache_ratio(self):
+        total = self.cache_hits + self.cache_misses
+        return (self.cache_hits / total * 100) if total > 0 else 0
+
+class FolderWatcher(QThread):
+    file_detected = pyqtSignal(str)
+    
+    def __init__(self, folder_path):
+        super().__init__()
+        self.folder_path = folder_path
+        self.watcher = QFileSystemWatcher()
+        self.watcher.directoryChanged.connect(self.check_folder)
+        self.processed_files = set()
+    
+    def start_watching(self):
+        self.watcher.addPath(self.folder_path)
+        self.check_folder()
+    
+    def stop_watching(self):
+        self.watcher.removePaths(self.watcher.directories())
+    
+    def check_folder(self):
+        folder = Path(self.folder_path)
+        if folder.exists():
+            for file in folder.iterdir():
+                if file.suffix.lower() in SUPPORTED_FORMATS and str(file) not in self.processed_files:
+                    self.processed_files.add(str(file))
+                    self.file_detected.emit(str(file))
+
 import pysrt
 import ass
 from deep_translator import GoogleTranslator
@@ -223,11 +417,12 @@ QStatusBar {
 """
 
 class SubtitleTranslator:
-    def __init__(self, dest_lang):
+    def __init__(self, dest_lang, stats=None):
         self.translator = GoogleTranslator(source='auto', target=dest_lang)
         self.dest_lang = dest_lang
         self.cache = self._load_cache()
         self.batch_size = 50
+        self.stats = stats
     
     def _load_cache(self):
         cache_file = Path(f"./cache/cache_{self.dest_lang}.json")
@@ -275,10 +470,14 @@ class SubtitleTranslator:
             
             if cache_key in self.cache:
                 cache_hits += 1
+                if self.stats:
+                    self.stats.cache_hits += 1
                 results[i] = self.cache[cache_key]
                 if i % 20 == 0 or i < 3:  # Show first few and occasional others
                     print(f"💾 [{i:4d}] Cache hit: \"{clean_text[:30]}{'...' if len(clean_text) > 30 else ''}\"")
             else:
+                if self.stats:
+                    self.stats.cache_misses += 1
                 to_translate.append(clean_text)
                 indices.append(i)
         
@@ -407,11 +606,12 @@ class TranslationWorker(QThread):
     error = pyqtSignal(str)
     stopped = pyqtSignal()
     
-    def __init__(self, files, languages, settings):
+    def __init__(self, files, languages, settings, stats=None):
         super().__init__()
         self.files = files
         self.languages = languages
         self.settings = settings
+        self.stats = stats
         self.is_stopped = False
     
     def run(self):
@@ -444,8 +644,11 @@ class TranslationWorker(QThread):
         
         self.progress.emit(f"📁 Processing: {path.name} ({current_index + 1}/{total_files})")
         
-        translators = {lang_code: SubtitleTranslator(lang_code) 
+        translators = {lang_code: SubtitleTranslator(lang_code, self.stats) 
                       for lang_code in self.languages.values()}
+        
+        if self.stats:
+            self.stats.files_processed += 1
         
         for i, (language, lang_code) in enumerate(self.languages.items()):
             if self.is_stopped:
@@ -453,11 +656,19 @@ class TranslationWorker(QThread):
             
             self.language_progress.emit(i + 1, len(self.languages))
             
-            # Determine output filename based on settings
+            # Generate custom filename
+            naming_template = self.settings.get('output_naming', '{filename}_{language}')
+            filename = naming_template.format(
+                filename=path.stem,
+                language=language,
+                date=datetime.now().strftime('%Y%m%d'),
+                time=datetime.now().strftime('%H%M%S')
+            )
+            
             if self.settings.get('organize_by_file', True):
-                output_file = output_folder / f"{path.stem}_{language}.srt"
+                output_file = output_folder / f"{filename}.srt"
             else:
-                output_file = output_folder / f"{path.stem}_{language}.srt"
+                output_file = output_folder / f"{filename}.srt"
             
             if output_file.exists() and not self.settings.get('overwrite_existing', False):
                 self.progress.emit(f"⏭️ {language} already exists, skipping...")
@@ -475,10 +686,14 @@ class TranslationWorker(QThread):
                     self.translate_plain_txt(file_path, output_file, translator)
                 
                 if not self.is_stopped:
+                    if self.stats:
+                        self.stats.languages_processed += 1
                     self.progress.emit(f"✅ {language} completed!")
                 
             except Exception as e:
                 if not self.is_stopped:
+                    if self.stats:
+                        self.stats.errors += 1
                     print(f"❌ Error processing {language}: {e}")
                     self.progress.emit(f"❌ {language} failed: {str(e)}")
         
@@ -511,6 +726,8 @@ class TranslationWorker(QThread):
             
             for j, translation in enumerate(translations):
                 subs[i+j].text = translation
+                if self.stats:
+                    self.stats.subtitles_translated += 1
             
             progress = min(i+translator.batch_size, len(subs))
             self.subtitle_progress.emit(progress, len(subs))
@@ -518,7 +735,8 @@ class TranslationWorker(QThread):
         
         if not self.is_stopped:
             translator._save_cache()
-            subs.save(output_file, encoding="utf-8")
+            encoding = self.settings.get('output_encoding', 'utf-8')
+            subs.save(output_file, encoding=encoding)
     
     def translate_ass_to_srt(self, input_file, output_file, translator):
         with open(input_file, "r", encoding="utf-8-sig") as f:
@@ -546,7 +764,8 @@ class TranslationWorker(QThread):
         
         if not self.is_stopped:
             translator._save_cache()
-            subs.save(output_file, encoding="utf-8")
+            encoding = self.settings.get('output_encoding', 'utf-8')
+            subs.save(output_file, encoding=encoding)
     
     def translate_plain_txt(self, input_file, output_file, translator):
         with open(input_file, "r", encoding="utf-8") as f:
@@ -556,7 +775,8 @@ class TranslationWorker(QThread):
         translator._save_cache()
         subs = pysrt.SubRipFile([pysrt.SubRipItem(1, 
             pysrt.SubRipTime(0,0,0,0), pysrt.SubRipTime(0,0,10,0), translated)])
-        subs.save(output_file, encoding="utf-8")
+        encoding = self.settings.get('output_encoding', 'utf-8')
+        subs.save(output_file, encoding=encoding)
     
     def is_srt_format(self, file_path):
         try:
@@ -572,19 +792,149 @@ class SubtitleTranslatorGUI(QMainWindow):
         self.setWindowTitle("🎬 Subtitle Translator Pro")
         self.setGeometry(100, 100, 900, 700)
         self.setStyleSheet(DARK_STYLE)
+        self.setAcceptDrops(True)
         
         self.worker = None
         self.enabled_languages = {}
         self.settings = self.load_settings()
+        self.stats = TranslationStats()
+        self.folder_watchers = []
+        self.watch_folders = self.settings.get('watchlist', [])
+        self.watch_queue = []
+        self.recent_files = self.settings.get('recent_files', [])
+        self.profiles = self.settings.get('profiles', {})
+        self.ui_language = self.settings.get('ui_language', 'en')
+        
+        # Start background UI translation worker
+        self.ui_translator = UITranslationWorker()
+        self.ui_translator.progress.connect(self.on_translation_progress)
+        self.ui_translator.finished.connect(self.on_translation_finished)
+        self.ui_translator.start()
         
         self.setup_ui()
         self.setup_status_bar()
         self.setup_menu_bar()
+        self.setup_shortcuts()
         
         # Set window icon if available
         icon_path = Path("icon.png")
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
+        
+        # Restore layout state
+        if self.settings.get('layout_state'):
+            self.restoreGeometry(QtCore.QByteArray.fromHex(self.settings['layout_state'].encode()))
+    
+    def tr(self, key):
+        if self.ui_language == 'en':
+            return UI_TEXTS.get(key, key)
+        
+        # Check cache first
+        cache_key = f"{self.ui_language}_{key}"
+        if cache_key in TRANSLATED_CACHE:
+            return TRANSLATED_CACHE[cache_key]
+        
+        # Translate using Google Translate
+        try:
+            translator = GoogleTranslator(source='en', target=self.ui_language)
+            translated = translator.translate(UI_TEXTS.get(key, key))
+            TRANSLATED_CACHE[cache_key] = translated
+            return translated
+        except:
+            return UI_TEXTS.get(key, key)
+    
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.accept()
+        else:
+            event.ignore()
+    
+    def dropEvent(self, event):
+        files = []
+        for url in event.mimeData().urls():
+            file_path = url.toLocalFile()
+            if Path(file_path).is_file() and Path(file_path).suffix.lower() in SUPPORTED_FORMATS:
+                files.append(file_path)
+            elif Path(file_path).is_dir():
+                folder_files = [str(f) for f in Path(file_path).iterdir() if f.suffix.lower() in SUPPORTED_FORMATS]
+                files.extend(folder_files)
+        
+        if files:
+            self.files = files
+            self.file_label.setText(f"Dropped: {len(files)} file(s)")
+            self.file_label.setStyleSheet("color: #14a085;")
+            self.output_folder = Path(files[0]).parent
+            self.btn_open_output.setEnabled(True)
+            self.add_to_recent_files(files)
+    
+    def setup_shortcuts(self):
+        QShortcut(QKeySequence("Ctrl+O"), self).activated.connect(self.select_single_file)
+        QShortcut(QKeySequence("Ctrl+Shift+O"), self).activated.connect(self.select_folder)
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.start_translation)
+        QShortcut(QKeySequence("Ctrl+Q"), self).activated.connect(self.close)
+        QShortcut(QKeySequence("F5"), self).activated.connect(self.start_translation)
+        QShortcut(QKeySequence("Escape"), self).activated.connect(self.stop_translation)
+        
+        # Tab navigation shortcuts
+        QShortcut(QKeySequence("Ctrl+1"), self).activated.connect(lambda: self.tab_widget.setCurrentIndex(0))
+        QShortcut(QKeySequence("Ctrl+2"), self).activated.connect(lambda: self.tab_widget.setCurrentIndex(1))
+        QShortcut(QKeySequence("Ctrl+3"), self).activated.connect(lambda: self.tab_widget.setCurrentIndex(2))
+        QShortcut(QKeySequence("Ctrl+4"), self).activated.connect(lambda: self.tab_widget.setCurrentIndex(3))
+        QShortcut(QKeySequence("Ctrl+5"), self).activated.connect(lambda: self.tab_widget.setCurrentIndex(4))
+        QShortcut(QKeySequence("Ctrl+6"), self).activated.connect(lambda: self.tab_widget.setCurrentIndex(5))
+        
+        # Accessibility shortcuts
+        QShortcut(QKeySequence("Alt+F"), self).activated.connect(self.focus_file_selection)
+        QShortcut(QKeySequence("Alt+L"), self).activated.connect(self.focus_language_selection)
+        QShortcut(QKeySequence("Alt+P"), self).activated.connect(self.focus_progress_log)
+    
+    def save_recent_files(self):
+        self.settings['recent_files'] = self.recent_files[-10:]
+        self.save_settings()
+    
+    def add_to_recent_files(self, files):
+        for file in files:
+            if file in self.recent_files:
+                self.recent_files.remove(file)
+            self.recent_files.append(file)
+        self.save_recent_files()
+        self.update_recent_menu()
+    
+    def load_profiles(self):
+        try:
+            with open('profiles.json', 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    
+    def save_watchlist(self):
+        self.settings['watchlist'] = self.watch_folders
+        self.save_settings()
+    
+    def save_settings(self):
+        try:
+            with open('settings.json', 'w') as f:
+                json.dump(self.settings, f, indent=4)
+        except Exception as e:
+            print(f"Error saving settings: {e}")
+    
+    def save_profiles(self):
+        self.settings['profiles'] = self.profiles
+        self.save_settings()
+    
+    def create_profile(self):
+        name, ok = QInputDialog.getText(self, 'Create Profile', 'Profile name:')
+        if ok and name:
+            self.profiles[name] = dict(self.enabled_languages)
+            self.save_profiles()
+            self.update_profile_menu()
+            self.update_profile_combo()
+    
+    def load_profile(self, name):
+        if name in self.profiles:
+            self.enabled_languages = self.profiles[name]
+            self.update_main_tab_languages()
+            self.status_bar.showMessage(f"Loaded profile: {name}")
     
     def setup_ui(self):
         central_widget = QWidget()
@@ -600,6 +950,15 @@ class SubtitleTranslatorGUI(QMainWindow):
         self.tab_widget.addTab(self.settings_tab, "Settings")
         self.tab_widget.addTab(self.about_tab, "About")
         
+        # Add new tabs
+        self.preview_tab = QWidget()
+        self.watch_tab = QWidget()
+        self.stats_tab = QWidget()
+        
+        self.tab_widget.addTab(self.preview_tab, "Preview")
+        self.tab_widget.addTab(self.watch_tab, "Watch Folder")
+        self.tab_widget.addTab(self.stats_tab, "Statistics")
+        
         main_layout = QVBoxLayout(central_widget)
         main_layout.addWidget(self.tab_widget)
         
@@ -611,6 +970,17 @@ class SubtitleTranslatorGUI(QMainWindow):
         
         # Setup about tab
         self.setup_about_tab()
+        
+        # Setup new tabs
+        self.setup_preview_tab()
+        self.setup_watch_tab()
+        self.setup_stats_tab()
+        
+        # Auto-start watching if folders exist
+        QTimer.singleShot(500, self.auto_start_watching)
+        
+        # Apply initial UI translations
+        QTimer.singleShot(100, self.refresh_ui_texts)
     
     def setup_status_bar(self):
         self.status_bar = QStatusBar()
@@ -638,9 +1008,26 @@ class SubtitleTranslatorGUI(QMainWindow):
         
         file_menu.addSeparator()
         
+        # Recent files submenu
+        self.recent_menu = file_menu.addMenu("Recent Files")
+        self.update_recent_menu()
+        
+        file_menu.addSeparator()
+        
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+        
+        # Profiles menu
+        profiles_menu = menu_bar.addMenu("Profiles")
+        
+        create_profile_action = QAction("Create Profile", self)
+        create_profile_action.triggered.connect(self.create_profile)
+        profiles_menu.addAction(create_profile_action)
+        
+        profiles_menu.addSeparator()
+        self.profile_menu = profiles_menu
+        self.update_profile_menu()
         
         # Tools menu
         tools_menu = menu_bar.addMenu("Tools")
@@ -823,6 +1210,15 @@ class SubtitleTranslatorGUI(QMainWindow):
         lang_btn_layout.addWidget(self.settings_deselect_all)
         lang_settings_layout.addLayout(lang_btn_layout)
         
+        # Profile selector
+        profile_layout = QHBoxLayout()
+        profile_layout.addWidget(QLabel("Profile:"))
+        self.profile_combo = QComboBox()
+        self.profile_combo.currentTextChanged.connect(self.load_profile_from_combo)
+        profile_layout.addWidget(self.profile_combo)
+        self.update_profile_combo()
+        lang_settings_layout.addLayout(profile_layout)
+        
         # Scroll area for languages
         lang_scroll = QScrollArea()
         lang_scroll.setWidgetResizable(True)
@@ -917,6 +1313,55 @@ class SubtitleTranslatorGUI(QMainWindow):
         
         scroll_layout.addWidget(cache_settings_group)
         
+        # UI Settings
+        ui_settings_group = QGroupBox("🌍 UI Settings")
+        ui_settings_layout = QVBoxLayout(ui_settings_group)
+        
+        # Language selection
+        lang_layout = QHBoxLayout()
+        lang_layout.addWidget(QLabel("Interface Language:"))
+        self.ui_language_combo = QComboBox()
+        
+        # Add all available languages
+        for lang_name, lang_code in sorted(LANGUAGES.items()):
+            self.ui_language_combo.addItem(f"{lang_name} ({lang_code})", lang_code)
+        
+        # Set current language
+        for i in range(self.ui_language_combo.count()):
+            if self.ui_language_combo.itemData(i) == self.ui_language:
+                self.ui_language_combo.setCurrentIndex(i)
+                break
+        
+        self.ui_language_combo.currentTextChanged.connect(self.on_ui_language_changed)
+        lang_layout.addWidget(self.ui_language_combo)
+        ui_settings_layout.addLayout(lang_layout)
+        
+        scroll_layout.addWidget(ui_settings_group)
+        
+        # Output Settings Enhancement
+        output_naming_group = QGroupBox("📝 Output Naming")
+        output_naming_layout = QVBoxLayout(output_naming_group)
+        
+        # Custom naming template
+        naming_layout = QHBoxLayout()
+        naming_layout.addWidget(QLabel("Template:"))
+        self.output_naming = QLineEdit()
+        self.output_naming.setText(self.settings.get('output_naming', '{filename}_{language}'))
+        self.output_naming.setPlaceholderText("{filename}_{language}_{date}")
+        naming_layout.addWidget(self.output_naming)
+        output_naming_layout.addLayout(naming_layout)
+        
+        # Encoding selection
+        encoding_layout = QHBoxLayout()
+        encoding_layout.addWidget(QLabel("Encoding:"))
+        self.output_encoding = QComboBox()
+        self.output_encoding.addItems(["utf-8", "utf-16", "ascii", "latin-1"])
+        self.output_encoding.setCurrentText(self.settings.get('output_encoding', 'utf-8'))
+        encoding_layout.addWidget(self.output_encoding)
+        output_naming_layout.addLayout(encoding_layout)
+        
+        scroll_layout.addWidget(output_naming_group)
+        
         # Save button
         self.save_settings_btn = QPushButton("💾 Save Settings")
         self.save_settings_btn.clicked.connect(self.save_all_settings)
@@ -992,7 +1437,207 @@ class SubtitleTranslatorGUI(QMainWindow):
         
         layout.addWidget(credits_group)
         
+        # Keyboard Shortcuts
+        shortcuts_group = QGroupBox("⌨️ Keyboard Shortcuts")
+        shortcuts_layout = QVBoxLayout(shortcuts_group)
+        
+        shortcuts = [
+            "Ctrl+O - Open single file",
+            "Ctrl+Shift+O - Open folder",
+            "Ctrl+S / F5 - Start translation",
+            "Escape - Stop translation",
+            "Ctrl+Q - Quit application"
+        ]
+        
+        for shortcut in shortcuts:
+            shortcut_label = QLabel(shortcut)
+            shortcut_label.setStyleSheet("padding: 5px; font-family: monospace;")
+            shortcuts_layout.addWidget(shortcut_label)
+        
+        layout.addWidget(shortcuts_group)
+        
         # Add spacer at the bottom
+        layout.addStretch()
+    
+    def setup_preview_tab(self):
+        layout = QVBoxLayout(self.preview_tab)
+        
+        header = QLabel("📄 File Preview")
+        header.setAlignment(QtCore.Qt.AlignCenter)
+        header.setFont(QFont("Arial", 18, QFont.Bold))
+        header.setStyleSheet("color: #14a085; margin: 20px;")
+        layout.addWidget(header)
+        
+        # File selector for preview
+        file_layout = QHBoxLayout()
+        self.preview_file_combo = QComboBox()
+        self.preview_file_combo.currentTextChanged.connect(self.update_preview)
+        file_layout.addWidget(QLabel("File:"))
+        file_layout.addWidget(self.preview_file_combo)
+        layout.addLayout(file_layout)
+        
+        # Preview text area
+        self.preview_text = QTextEdit()
+        self.preview_text.setReadOnly(True)
+        layout.addWidget(self.preview_text)
+    
+    def setup_watch_tab(self):
+        layout = QVBoxLayout(self.watch_tab)
+        
+        header = QLabel("🔍 Folder Monitor")
+        header.setAlignment(QtCore.Qt.AlignCenter)
+        header.setFont(QFont("Arial", 18, QFont.Bold))
+        header.setStyleSheet("color: #14a085; margin: 20px;")
+        layout.addWidget(header)
+        
+        # Main content in horizontal layout
+        main_layout = QHBoxLayout()
+        
+        # Left panel - Folder management
+        left_panel = QWidget()
+        left_panel.setMaximumWidth(350)
+        left_layout = QVBoxLayout(left_panel)
+        
+        # Folders section
+        folders_group = QGroupBox("📁 Monitored Folders")
+        folders_layout = QVBoxLayout(folders_group)
+        
+        # Folder list with custom styling
+        self.watch_folders_list = QListWidget()
+        self.watch_folders_list.setStyleSheet("""
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #404040;
+                background-color: #2d2d2d;
+            }
+            QListWidget::item:selected {
+                background-color: #0d7377;
+            }
+        """)
+        folders_layout.addWidget(self.watch_folders_list)
+        
+        # Folder controls with icons
+        folder_controls = QHBoxLayout()
+        self.add_folder_btn = QPushButton("➕ Add")
+        self.remove_folder_btn = QPushButton("➖ Remove")
+        self.add_folder_btn.clicked.connect(self.add_watch_folder)
+        self.remove_folder_btn.clicked.connect(self.remove_watch_folder)
+        self.add_folder_btn.setStyleSheet("QPushButton { background-color: #0d7377; }")
+        self.remove_folder_btn.setStyleSheet("QPushButton { background-color: #d32f2f; }")
+        folder_controls.addWidget(self.add_folder_btn)
+        folder_controls.addWidget(self.remove_folder_btn)
+        folders_layout.addLayout(folder_controls)
+        
+        left_layout.addWidget(folders_group)
+        
+        # Control panel
+        control_group = QGroupBox("⚙️ Controls")
+        control_layout = QVBoxLayout(control_group)
+        
+        # Watch status
+        self.watch_status = QLabel("Status: Stopped")
+        self.watch_status.setStyleSheet("color: #d32f2f; font-weight: bold;")
+        control_layout.addWidget(self.watch_status)
+        
+        # Watch buttons
+        self.start_watch_btn = QPushButton("▶️ Start Monitoring")
+        self.stop_watch_btn = QPushButton("⏹️ Stop Monitoring")
+        self.start_watch_btn.clicked.connect(self.start_watching)
+        self.stop_watch_btn.clicked.connect(self.stop_watching)
+        self.start_watch_btn.setStyleSheet("QPushButton { background-color: #0d7377; }")
+        self.stop_watch_btn.setStyleSheet("QPushButton { background-color: #d32f2f; }")
+        self.stop_watch_btn.setEnabled(False)
+        control_layout.addWidget(self.start_watch_btn)
+        control_layout.addWidget(self.stop_watch_btn)
+        
+        # Auto-translate option
+        self.auto_translate_cb = QCheckBox("🚀 Auto-translate detected files")
+        self.auto_translate_cb.setChecked(True)
+        control_layout.addWidget(self.auto_translate_cb)
+        
+        # Queue info
+        self.queue_label = QLabel("Queue: 0 files")
+        self.queue_label.setStyleSheet("color: #888;")
+        control_layout.addWidget(self.queue_label)
+        
+        left_layout.addWidget(control_group)
+        left_layout.addStretch()
+        
+        # Right panel - Activity log
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        
+        log_group = QGroupBox("📋 Activity Log")
+        log_layout = QVBoxLayout(log_group)
+        
+        # Log controls
+        log_controls = QHBoxLayout()
+        clear_log_btn = QPushButton("🗑️ Clear")
+        clear_log_btn.clicked.connect(self.clear_activity_log)
+        log_controls.addStretch()
+        log_controls.addWidget(clear_log_btn)
+        log_layout.addLayout(log_controls)
+        
+        # Advanced activity log
+        self.watch_log = QListWidget()
+        self.watch_log.setStyleSheet("""
+            QListWidget {
+                background-color: #1a1a1a;
+                border: 1px solid #404040;
+                border-radius: 8px;
+                font-family: 'Consolas', monospace;
+                font-size: 11px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #2d2d2d;
+                margin: 1px;
+            }
+            QListWidget::item:hover {
+                background-color: #2d2d2d;
+            }
+        """)
+        log_layout.addWidget(self.watch_log)
+        
+        right_layout.addWidget(log_group)
+        
+        # Add panels to main layout
+        main_layout.addWidget(left_panel)
+        main_layout.addWidget(right_panel)
+        layout.addLayout(main_layout)
+    
+    def setup_stats_tab(self):
+        layout = QVBoxLayout(self.stats_tab)
+        
+        header = QLabel("📊 Translation Statistics")
+        header.setAlignment(QtCore.Qt.AlignCenter)
+        header.setFont(QFont("Arial", 18, QFont.Bold))
+        header.setStyleSheet("color: #14a085; margin: 20px;")
+        layout.addWidget(header)
+        
+        # Stats display
+        stats_group = QGroupBox("Current Session")
+        stats_layout = QVBoxLayout(stats_group)
+        
+        self.stats_labels = {
+            'files': QLabel("Files processed: 0"),
+            'languages': QLabel("Languages processed: 0"),
+            'subtitles': QLabel("Subtitles translated: 0"),
+            'cache_ratio': QLabel("Cache hit ratio: 0%"),
+            'duration': QLabel("Duration: 0s"),
+            'errors': QLabel("Errors: 0")
+        }
+        
+        for label in self.stats_labels.values():
+            stats_layout.addWidget(label)
+        
+        layout.addWidget(stats_group)
+        
+        # Reset button
+        reset_btn = QPushButton("Reset Statistics")
+        reset_btn.clicked.connect(self.reset_stats)
+        layout.addWidget(reset_btn)
+        
         layout.addStretch()
     
     def select_single_file(self):
@@ -1005,6 +1650,8 @@ class SubtitleTranslatorGUI(QMainWindow):
             self.file_label.setStyleSheet("color: #14a085;")
             self.output_folder = Path(file_path).parent
             self.btn_open_output.setEnabled(True)
+            self.add_to_recent_files([file_path])
+            self.update_preview_files()
             self.status_bar.showMessage(f"Selected file: {Path(file_path).name}")
     
     def select_folder(self):
@@ -1022,6 +1669,8 @@ class SubtitleTranslatorGUI(QMainWindow):
                 self.file_label.setStyleSheet("color: #14a085;")
                 self.output_folder = folder
                 self.btn_open_output.setEnabled(True)
+                self.add_to_recent_files(files)
+                self.update_preview_files()
                 self.status_bar.showMessage(f"Selected {len(files)} files from {folder.name}")
             else:
                 QMessageBox.warning(self, "No Files", "No subtitle files found in the selected folder.")
@@ -1055,7 +1704,14 @@ class SubtitleTranslatorGUI(QMainWindow):
             'overwrite_existing': False,
             'batch_size': 50,
             'retry_count': 3,
-            'enable_cache': True
+            'enable_cache': True,
+            'recent_files': [],
+            'profiles': {},
+            'watchlist': [],
+            'ui_language': 'en',
+            'output_naming': '{filename}_{language}',
+            'output_encoding': 'utf-8',
+            'layout_state': None
         }
     
     def load_enabled_languages(self):
@@ -1087,16 +1743,20 @@ class SubtitleTranslatorGUI(QMainWindow):
             'overwrite_existing': self.overwrite_existing.isChecked(),
             'batch_size': self.batch_size.value(),
             'retry_count': self.retry_count.value(),
-            'enable_cache': self.enable_cache.isChecked()
+            'enable_cache': self.enable_cache.isChecked(),
+            'ui_language': self.ui_language_combo.currentData(),
+            'output_naming': self.output_naming.text(),
+            'output_encoding': self.output_encoding.currentText(),
+            'layout_state': self.saveGeometry().toHex().data().decode()
         }
+        
+        # Update settings object
+        self.settings.update(settings)
+        self.enabled_languages = selected_languages
         
         # Save to file
         try:
-            with open('settings.json', 'w') as f:
-                json.dump(settings, f, indent=4)
-                
-            self.enabled_languages = selected_languages
-            self.settings = settings
+            self.save_settings()
             
             # Update main tab language list
             self.update_main_tab_languages()
@@ -1217,7 +1877,8 @@ class SubtitleTranslatorGUI(QMainWindow):
             'enable_cache': self.settings.get('enable_cache', True)
         }
         
-        self.worker = TranslationWorker(self.files, selected_langs, current_settings)
+        self.stats.start_session()
+        self.worker = TranslationWorker(self.files, selected_langs, current_settings, self.stats)
         self.worker.progress.connect(self.update_progress)
         self.worker.file_progress.connect(self.update_file_progress)
         self.worker.language_progress.connect(self.update_language_progress)
@@ -1255,9 +1916,20 @@ class SubtitleTranslatorGUI(QMainWindow):
     def translation_finished(self):
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
+        self.stats.end_session()
+        self.update_stats_display()
         self.log_text.append("\n🎉 Translation completed successfully!")
-        QMessageBox.information(self, "Success", "Translation completed successfully!")
-        self.status_bar.showMessage("Translation completed successfully")
+        
+        # Process next file in watch queue
+        if self.watch_queue:
+            next_file = self.watch_queue.pop(0)
+            self.queue_label.setText(f"Queue: {len(self.watch_queue)} files")
+            self.add_log_entry("🚀 Processing queue", f"{Path(next_file).name}", "success")
+            self.files = [next_file]
+            QTimer.singleShot(1000, self.start_translation)  # Small delay
+        else:
+            QMessageBox.information(self, "Success", "Translation completed successfully!")
+            self.status_bar.showMessage("Translation completed successfully")
     
     def translation_stopped(self):
         self.btn_start.setEnabled(True)
@@ -1287,6 +1959,285 @@ class SubtitleTranslatorGUI(QMainWindow):
                 cache_file.unlink()
         
         event.accept()
+    
+    def update_preview_files(self):
+        self.preview_file_combo.clear()
+        if self.files:
+            for file in self.files:
+                self.preview_file_combo.addItem(Path(file).name, file)
+    
+    def update_preview(self):
+        file_path = self.preview_file_combo.currentData()
+        if file_path and Path(file_path).exists():
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                self.preview_text.setPlainText(content[:2000])  # First 2000 chars
+            except Exception as e:
+                self.preview_text.setPlainText(f"Error reading file: {e}")
+    
+    def add_watch_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Watch Folder")
+        if folder and folder not in self.watch_folders:
+            self.watch_folders.append(folder)
+            self.watch_folders_list.addItem(folder)
+            self.save_watchlist()
+            self.add_log_entry("➕ Folder added", Path(folder).name, "success")
+    
+    def remove_watch_folder(self):
+        current_row = self.watch_folders_list.currentRow()
+        if current_row >= 0:
+            folder = self.watch_folders[current_row]
+            self.watch_folders.pop(current_row)
+            self.watch_folders_list.takeItem(current_row)
+            self.save_watchlist()
+            self.add_log_entry("➖ Folder removed", Path(folder).name, "warning")
+            # Stop watcher for this folder if running
+            for watcher in self.folder_watchers:
+                if watcher.folder_path == folder:
+                    watcher.stop_watching()
+                    self.folder_watchers.remove(watcher)
+                    break
+    
+    def start_watching(self):
+        if self.watch_folders:
+            for folder in self.watch_folders:
+                watcher = FolderWatcher(folder)
+                watcher.file_detected.connect(self.on_file_detected)
+                watcher.start_watching()
+                self.folder_watchers.append(watcher)
+            
+            self.start_watch_btn.setEnabled(False)
+            self.stop_watch_btn.setEnabled(True)
+            self.watch_status.setText("Status: Monitoring")
+            self.watch_status.setStyleSheet("color: #14a085; font-weight: bold;")
+            self.add_log_entry("▶️ Started monitoring", f"{len(self.watch_folders)} folder(s)", "success")
+        else:
+            QMessageBox.warning(self, "No Folders", "Please add folders to monitor first.")
+    
+    def stop_watching(self):
+        # Stop all folder watchers
+        for watcher in self.folder_watchers:
+            watcher.stop_watching()
+        self.folder_watchers.clear()
+        
+        # Stop UI translation worker
+        if hasattr(self, 'ui_translator') and self.ui_translator.isRunning():
+            self.ui_translator.stop()
+            self.ui_translator.wait()
+        self.watch_queue.clear()
+        self.start_watch_btn.setEnabled(True)
+        self.stop_watch_btn.setEnabled(False)
+        self.watch_status.setText("Status: Stopped")
+        self.watch_status.setStyleSheet("color: #d32f2f; font-weight: bold;")
+        self.queue_label.setText("Queue: 0 files")
+        self.add_log_entry("⏹️ Stopped monitoring", "All folders", "warning")
+    
+    def on_file_detected(self, file_path):
+        folder_name = Path(file_path).parent.name
+        self.add_log_entry("📄 File detected", f"{Path(file_path).name}", "info", folder_name)
+        
+        if self.auto_translate_cb.isChecked():
+            if not self.worker or not self.worker.isRunning():
+                # Start translation immediately if not busy
+                self.files = [file_path]
+                self.add_log_entry("🚀 Translation started", f"{Path(file_path).name}", "success")
+                self.start_translation()
+            else:
+                # Add to queue if translation is running
+                self.watch_queue.append(file_path)
+                self.queue_label.setText(f"Queue: {len(self.watch_queue)} files")
+                self.add_log_entry("⏳ Added to queue", f"{Path(file_path).name}", "info")
+    
+    def reset_stats(self):
+        self.stats.reset()
+        self.update_stats_display()
+    
+    def update_stats_display(self):
+        self.stats_labels['files'].setText(f"Files processed: {self.stats.files_processed}")
+        self.stats_labels['languages'].setText(f"Languages processed: {self.stats.languages_processed}")
+        self.stats_labels['subtitles'].setText(f"Subtitles translated: {self.stats.subtitles_translated}")
+        self.stats_labels['cache_ratio'].setText(f"Cache hit ratio: {self.stats.get_cache_ratio():.1f}%")
+        self.stats_labels['duration'].setText(f"Duration: {self.stats.get_duration():.1f}s")
+        self.stats_labels['errors'].setText(f"Errors: {self.stats.errors}")
+    
+    def update_recent_menu(self):
+        self.recent_menu.clear()
+        for file_path in self.recent_files[-10:]:
+            if Path(file_path).exists():
+                action = QAction(Path(file_path).name, self)
+                action.triggered.connect(lambda checked, f=file_path: self.load_recent_file(f))
+                self.recent_menu.addAction(action)
+    
+    def load_recent_file(self, file_path):
+        self.files = [file_path]
+        self.file_label.setText(f"Selected: {Path(file_path).name}")
+        self.file_label.setStyleSheet("color: #14a085;")
+        self.output_folder = Path(file_path).parent
+        self.btn_open_output.setEnabled(True)
+        self.update_preview_files()
+    
+    def update_profile_menu(self):
+        # Clear existing profile actions
+        for action in self.profile_menu.actions()[2:]:  # Skip "Create Profile" and separator
+            self.profile_menu.removeAction(action)
+        
+        for name in self.profiles.keys():
+            action = QAction(name, self)
+            action.triggered.connect(lambda checked, n=name: self.load_profile(n))
+            self.profile_menu.addAction(action)
+    
+    def update_profile_combo(self):
+        self.profile_combo.clear()
+        self.profile_combo.addItem("-- Select Profile --")
+        for name in self.profiles.keys():
+            self.profile_combo.addItem(name)
+    
+    def load_profile_from_combo(self, name):
+        if name and name != "-- Select Profile --":
+            self.load_profile(name)
+            # Update checkboxes to match profile
+            for lang, checkbox in self.settings_lang_checkboxes.items():
+                checkbox.setChecked(lang in self.enabled_languages)
+    
+    def add_log_entry(self, action, details, level="info", folder=None):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        
+        # Create styled log entry
+        item = QListWidgetItem()
+        
+        # Color coding based on level
+        colors = {
+            "success": "#14a085",
+            "warning": "#ff9800", 
+            "error": "#d32f2f",
+            "info": "#2196f3"
+        }
+        
+        color = colors.get(level, "#ffffff")
+        folder_text = f" [{folder}]" if folder else ""
+        
+        # HTML formatted text with colors and styling
+        html_text = f"""
+        <div style="color: {color}; padding: 2px;">
+            <span style="color: #888; font-size: 10px;">[{timestamp}]</span>
+            <span style="font-weight: bold; margin-left: 8px;">{action}</span>
+            <span style="color: #ccc; margin-left: 8px;">{details}</span>
+            <span style="color: #666; font-style: italic;">{folder_text}</span>
+        </div>
+        """
+        
+        item.setText(f"[{timestamp}] {action}: {details}{folder_text}")
+        item.setToolTip(html_text)
+        
+        # Set background color based on level
+        bg_colors = {
+            "success": "#0d4d40",
+            "warning": "#4d3300",
+            "error": "#4d1a1a", 
+            "info": "#1a2d4d"
+        }
+        
+        item.setBackground(QtGui.QColor(bg_colors.get(level, "#2d2d2d")))
+        item.setForeground(QtGui.QColor(color))
+        
+        self.watch_log.addItem(item)
+        self.watch_log.scrollToBottom()
+        
+        # Keep only last 100 entries
+        if self.watch_log.count() > 100:
+            self.watch_log.takeItem(0)
+    
+    def clear_activity_log(self):
+        self.watch_log.clear()
+        self.add_log_entry("🗑️ Log cleared", "Activity log reset", "info")
+    
+    def focus_file_selection(self):
+        self.tab_widget.setCurrentIndex(0)
+        self.btn_single.setFocus()
+    
+    def focus_language_selection(self):
+        self.tab_widget.setCurrentIndex(0)
+        if hasattr(self, 'lang_flow_widget'):
+            self.lang_flow_widget.setFocus()
+    
+    def focus_progress_log(self):
+        self.tab_widget.setCurrentIndex(0)
+        self.log_text.setFocus()
+    
+    def on_ui_language_changed(self):
+        new_language = self.ui_language_combo.currentData()
+        if new_language != self.ui_language:
+            self.ui_language = new_language
+            self.refresh_ui_texts()
+    
+    def refresh_ui_texts(self):
+        # Update window title
+        self.setWindowTitle(f"🎬 {self.tr('app_title')}")
+        
+        # Update tab titles
+        self.tab_widget.setTabText(0, self.tr('main_tab'))
+        self.tab_widget.setTabText(1, self.tr('settings_tab'))
+        self.tab_widget.setTabText(2, self.tr('about_tab'))
+        self.tab_widget.setTabText(3, self.tr('preview_tab'))
+        self.tab_widget.setTabText(4, self.tr('watch_tab'))
+        self.tab_widget.setTabText(5, self.tr('stats_tab'))
+        
+        # Update main tab elements
+        if hasattr(self, 'btn_single'):
+            self.btn_single.setText(f"📄 {self.tr('select_single_file')}")
+            self.btn_folder.setText(f"📁 {self.tr('select_folder')}")
+            self.btn_start.setText(f"🚀 {self.tr('start_translation')}")
+            self.btn_stop.setText(f"⏹️ {self.tr('stop')}")
+            self.btn_clear.setText(f"🗑️ {self.tr('clear_logs')}")
+            self.btn_open_output.setText(f"📂 {self.tr('open_output_folder')}")
+        
+        # Update settings elements
+        if hasattr(self, 'save_settings_btn'):
+            self.save_settings_btn.setText(f"💾 {self.tr('save_settings')}")
+        
+        # Update watch tab elements
+        if hasattr(self, 'add_folder_btn'):
+            self.add_folder_btn.setText(f"➕ {self.tr('add')}")
+            self.remove_folder_btn.setText(f"➖ {self.tr('remove')}")
+            self.start_watch_btn.setText(f"▶️ {self.tr('start_monitoring')}")
+            self.stop_watch_btn.setText(f"⏹️ {self.tr('stop_monitoring')}")
+            self.auto_translate_cb.setText(f"🚀 {self.tr('auto_translate_detected')}")
+        
+        # Update file selection label if no files
+        if hasattr(self, 'file_label') and self.file_label.text() == "No files selected":
+            self.file_label.setText(self.tr('no_files_selected'))
+        
+        # Show translation progress
+        if hasattr(self, 'ui_language_combo'):
+            self.status_bar.showMessage(f"UI translated to {self.ui_language_combo.currentText()}")
+        
+        # Save the language change
+        self.settings['ui_language'] = self.ui_language
+        self.save_settings()
+    
+    def on_translation_progress(self, language, current, total):
+        progress = int((current / total) * 100)
+        self.status_bar.showMessage(f"Pre-translating UI: {language} ({progress}%)")
+    
+    def on_translation_finished(self):
+        self.status_bar.showMessage("UI translation cache ready - Language switching will be instant!")
+        QTimer.singleShot(3000, lambda: self.status_bar.showMessage("Ready"))
+    
+    def auto_start_watching(self):
+        # Populate watchlist UI with saved folders
+        for folder in self.watch_folders:
+            if Path(folder).exists():
+                self.watch_folders_list.addItem(folder)
+            else:
+                # Remove non-existent folders
+                self.watch_folders.remove(folder)
+        
+        # Auto-start if folders exist
+        if self.watch_folders:
+            self.save_watchlist()  # Save cleaned list
+            self.start_watching()
+            self.add_log_entry("🚀 Auto-started", f"Monitoring {len(self.watch_folders)} saved folders", "success")
 
 def main():
     app = QApplication(sys.argv)
