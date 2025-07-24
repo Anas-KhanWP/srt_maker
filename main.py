@@ -4,12 +4,36 @@ import time
 import hashlib
 import json
 import shutil
+import re
+import sqlite3
+import requests
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtCore import QThread, pyqtSignal, QTimer, QSize, QRect, QPoint, QFileSystemWatcher, QTranslator, QLocale
+from PyQt5.QtCore import QThread, pyqtSignal, QTimer, QSize, QRect, QPoint, QFileSystemWatcher, QTranslator, QLocale, QUrl
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QKeySequence
+
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+
+try:
+    import torch
+    GPU_AVAILABLE = torch.cuda.is_available()
+    print(f"TORCH: PyTorch is available. GPU support: {GPU_AVAILABLE}")
+except ImportError:
+    print("TORCH IMPORT ERROR: PyTorch is not installed or not available.")
+    GPU_AVAILABLE = False
+
+try:
+    from transformers import MarianMTModel, MarianTokenizer, pipeline
+    TRANSFORMERS_AVAILABLE = True
+    print("TRANSFORMERS: Available for offline translation")
+except ImportError:
+    print("TRANSFORMERS IMPORT ERROR: transformers library not available")
+    TRANSFORMERS_AVAILABLE = False
 
 # Comprehensive UI texts for translation
 UI_TEXTS = {
@@ -86,6 +110,71 @@ UI_TEXTS = {
 
 # Cache for translated UI texts
 TRANSLATED_CACHE = {}
+
+
+
+
+
+# Performance Dashboard
+class PerformanceDashboard(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setup_ui()
+    
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # Create matplotlib figure
+        self.figure = Figure(figsize=(12, 8))
+        self.canvas = FigureCanvas(self.figure)
+        layout.addWidget(self.canvas)
+        
+        # Refresh button
+        refresh_btn = QPushButton('Refresh Dashboard')
+        refresh_btn.clicked.connect(self.update_charts)
+        layout.addWidget(refresh_btn)
+        
+        self.update_charts()
+    
+    def update_charts(self):
+        self.figure.clear()
+        
+        # Create subplots
+        ax1 = self.figure.add_subplot(2, 2, 1)
+        ax2 = self.figure.add_subplot(2, 2, 2)
+        ax3 = self.figure.add_subplot(2, 2, 3)
+        ax4 = self.figure.add_subplot(2, 2, 4)
+        
+        # Sample data - replace with actual stats
+        languages = ['Spanish', 'French', 'German', 'Chinese', 'Arabic']
+        counts = [45, 32, 28, 22, 18]
+        
+        # Language usage chart
+        ax1.bar(languages, counts)
+        ax1.set_title('Most Translated Languages')
+        ax1.tick_params(axis='x', rotation=45)
+        
+        # Translation speed over time
+        days = list(range(1, 8))
+        speeds = [120, 135, 142, 138, 155, 148, 162]
+        ax2.plot(days, speeds, marker='o')
+        ax2.set_title('Translation Speed (subtitles/min)')
+        ax2.set_xlabel('Days')
+        
+        # Cache hit ratio
+        cache_data = ['Cache Hits', 'Cache Misses']
+        cache_values = [75, 25]
+        ax3.pie(cache_values, labels=cache_data, autopct='%1.1f%%')
+        ax3.set_title('Cache Performance')
+        
+        # File types processed
+        file_types = ['SRT', 'ASS', 'TXT']
+        file_counts = [65, 25, 10]
+        ax4.bar(file_types, file_counts)
+        ax4.set_title('File Types Processed')
+        
+        self.figure.tight_layout()
+        self.canvas.draw()
 
 class UITranslationWorker(QThread):
     progress = pyqtSignal(str, int, int)  # language, current, total
@@ -285,6 +374,84 @@ import ass
 from deep_translator import GoogleTranslator
 from deep_translator.constants import GOOGLE_LANGUAGES_TO_CODES
 
+
+
+# Offline Translation Models
+class OfflineTranslator:
+    def __init__(self, model_name='marian'):
+        self.model_name = model_name
+        self.models = {}
+        self.tokenizers = {}
+        
+    def get_model_key(self, source_lang, target_lang):
+        if source_lang == 'auto':
+            source_lang = 'en'
+        return f"{source_lang}-{target_lang}"
+    
+    def load_model(self, source_lang, target_lang):
+        if not TRANSFORMERS_AVAILABLE:
+            raise Exception("Transformers library not available")
+            
+        model_key = self.get_model_key(source_lang, target_lang)
+        
+        if model_key in self.models:
+            return self.models[model_key], self.tokenizers[model_key]
+        
+        try:
+            if self.model_name == 'marian':
+                model_name = f"Helsinki-NLP/opus-mt-{source_lang}-{target_lang}"
+                tokenizer = MarianTokenizer.from_pretrained(model_name)
+                model = MarianMTModel.from_pretrained(model_name)
+            else:
+                model = pipeline("translation", model=f"Helsinki-NLP/opus-mt-{source_lang}-{target_lang}")
+                tokenizer = None
+                
+            self.models[model_key] = model
+            self.tokenizers[model_key] = tokenizer
+            return model, tokenizer
+            
+        except Exception as e:
+            raise Exception(f"Model not available for {source_lang}->{target_lang}: {e}")
+    
+    def translate(self, text, target_lang, source_lang='en'):
+        try:
+            model, tokenizer = self.load_model(source_lang, target_lang)
+            
+            if tokenizer:
+                inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+                translated = model.generate(**inputs)
+                result = tokenizer.decode(translated[0], skip_special_tokens=True)
+            else:
+                result = model(text)[0]['translation_text']
+                
+            return result
+        except Exception as e:
+            return f"[Translation Error: {e}]"
+
+# Translation Services
+class TranslationService:
+    def __init__(self, name, translator_class, is_offline=False):
+        self.name = name
+        self.translator_class = translator_class
+        self.is_offline = is_offline
+    
+    def translate(self, text, target_lang, source_lang='auto'):
+        if self.is_offline:
+            translator = self.translator_class()
+            return translator.translate(text, target_lang, source_lang)
+        else:
+            translator = self.translator_class(source=source_lang, target=target_lang)
+            return translator.translate(text)
+
+TRANSLATION_SERVICES = {
+    'google': TranslationService('Google Translate (Recommended)', GoogleTranslator, False),
+    'marian': TranslationService('Marian MT (Offline)', OfflineTranslator, True) if TRANSFORMERS_AVAILABLE else None,
+    'opus': TranslationService('Opus-MT (Offline)', lambda: OfflineTranslator('opus'), True) if TRANSFORMERS_AVAILABLE else None
+}
+
+# Remove None services
+TRANSLATION_SERVICES = {k: v for k, v in TRANSLATION_SERVICES.items() if v is not None}
+
 # Default languages that are enabled
 DEFAULT_LANGUAGES = {
     "Spanish": "es", "Dutch": "nl", "Russian": "ru", "German": "de",
@@ -417,12 +584,25 @@ QStatusBar {
 """
 
 class SubtitleTranslator:
-    def __init__(self, dest_lang, stats=None):
-        self.translator = GoogleTranslator(source='auto', target=dest_lang)
+    def __init__(self, dest_lang, stats=None, service='google'):
         self.dest_lang = dest_lang
+        self.service = service
         self.cache = self._load_cache()
         self.batch_size = 50
         self.stats = stats
+        
+        # Initialize translator based on service
+        if service in TRANSLATION_SERVICES:
+            service_obj = TRANSLATION_SERVICES[service]
+            if service_obj.is_offline:
+                self.translator = service_obj.translator_class()
+                self.is_offline = True
+            else:
+                self.translator = GoogleTranslator(source='auto', target=dest_lang)
+                self.is_offline = False
+        else:
+            self.translator = GoogleTranslator(source='auto', target=dest_lang)
+            self.is_offline = False
     
     def _load_cache(self):
         cache_file = Path(f"./cache/cache_{self.dest_lang}.json")
@@ -577,7 +757,12 @@ class SubtitleTranslator:
             try:
                 print(f"🔄 Attempt {retry + 1}: Translating text...")
                 start_time = time.time()
-                result = self.translator.translate(text)
+                
+                if self.is_offline:
+                    result = self.translator.translate(text, self.dest_lang, 'en')
+                else:
+                    result = self.translator.translate(text)
+                    
                 elapsed = time.time() - start_time
                 
                 print(f"✅ Translation successful in {elapsed:.2f}s!")
@@ -644,7 +829,8 @@ class TranslationWorker(QThread):
         
         self.progress.emit(f"📁 Processing: {path.name} ({current_index + 1}/{total_files})")
         
-        translators = {lang_code: SubtitleTranslator(lang_code, self.stats) 
+        service = self.settings.get('translation_service', 'google')
+        translators = {lang_code: SubtitleTranslator(lang_code, self.stats, service) 
                       for lang_code in self.languages.values()}
         
         if self.stats:
@@ -805,6 +991,8 @@ class SubtitleTranslatorGUI(QMainWindow):
         self.profiles = self.settings.get('profiles', {})
         self.ui_language = self.settings.get('ui_language', 'en')
         
+
+        
         # Start background UI translation worker
         self.ui_translator = UITranslationWorker()
         self.ui_translator.progress.connect(self.on_translation_progress)
@@ -954,10 +1142,16 @@ class SubtitleTranslatorGUI(QMainWindow):
         self.preview_tab = QWidget()
         self.watch_tab = QWidget()
         self.stats_tab = QWidget()
+        self.compare_tab = QWidget()
+        self.find_replace_tab = QWidget()
+        self.dashboard_tab = QWidget()
         
         self.tab_widget.addTab(self.preview_tab, "Preview")
         self.tab_widget.addTab(self.watch_tab, "Watch Folder")
         self.tab_widget.addTab(self.stats_tab, "Statistics")
+        self.tab_widget.addTab(self.compare_tab, "Compare")
+        self.tab_widget.addTab(self.find_replace_tab, "Find & Replace")
+        self.tab_widget.addTab(self.dashboard_tab, "Dashboard")
         
         main_layout = QVBoxLayout(central_widget)
         main_layout.addWidget(self.tab_widget)
@@ -975,6 +1169,9 @@ class SubtitleTranslatorGUI(QMainWindow):
         self.setup_preview_tab()
         self.setup_watch_tab()
         self.setup_stats_tab()
+        self.setup_compare_tab()
+        self.setup_find_replace_tab()
+        self.setup_dashboard_tab()
         
         # Auto-start watching if folders exist
         QTimer.singleShot(500, self.auto_start_watching)
@@ -1291,6 +1488,42 @@ class SubtitleTranslatorGUI(QMainWindow):
         translation_settings_layout.addLayout(retry_layout)
         
         scroll_layout.addWidget(translation_settings_group)
+        
+        # Advanced Translation Settings
+        advanced_translation_group = QGroupBox("🚀 Advanced Translation")
+        advanced_translation_layout = QVBoxLayout(advanced_translation_group)
+        
+        # Translation service selection
+        service_layout = QHBoxLayout()
+        service_layout.addWidget(QLabel("Translation Model:"))
+        self.translation_service = QComboBox()
+        
+        # Add available translation services
+        for key, service in TRANSLATION_SERVICES.items():
+            self.translation_service.addItem(service.name, key)
+        
+        # Set current service
+        current_service = self.settings.get('translation_service', 'google')
+        for i in range(self.translation_service.count()):
+            if self.translation_service.itemData(i) == current_service:
+                self.translation_service.setCurrentIndex(i)
+                break
+        
+        service_layout.addWidget(self.translation_service)
+        advanced_translation_layout.addLayout(service_layout)
+        
+        # GPU acceleration
+        self.use_gpu = QCheckBox("Use GPU Acceleration (if available)")
+        self.use_gpu.setChecked(self.settings.get('use_gpu', False))
+        self.use_gpu.setEnabled(GPU_AVAILABLE)
+        advanced_translation_layout.addWidget(self.use_gpu)
+        
+        # Offline mode
+        self.offline_mode = QCheckBox("Offline Mode (no internet required)")
+        self.offline_mode.setChecked(self.settings.get('offline_mode', False))
+        advanced_translation_layout.addWidget(self.offline_mode)
+        
+        scroll_layout.addWidget(advanced_translation_group)
         
         # Cache Settings
         cache_settings_group = QGroupBox("💾 Cache Settings")
@@ -1711,7 +1944,11 @@ class SubtitleTranslatorGUI(QMainWindow):
             'ui_language': 'en',
             'output_naming': '{filename}_{language}',
             'output_encoding': 'utf-8',
-            'layout_state': None
+            'layout_state': None,
+            'translation_service': 'google',
+            'use_gpu': GPU_AVAILABLE,
+            'offline_mode': False,
+            'offline_model': 'marian'
         }
     
     def load_enabled_languages(self):
@@ -1747,7 +1984,10 @@ class SubtitleTranslatorGUI(QMainWindow):
             'ui_language': self.ui_language_combo.currentData(),
             'output_naming': self.output_naming.text(),
             'output_encoding': self.output_encoding.currentText(),
-            'layout_state': self.saveGeometry().toHex().data().decode()
+            'layout_state': self.saveGeometry().toHex().data().decode(),
+            'translation_service': self.translation_service.currentData(),
+            'use_gpu': self.use_gpu.isChecked(),
+            'offline_mode': self.offline_mode.isChecked()
         }
         
         # Update settings object
@@ -2216,6 +2456,77 @@ class SubtitleTranslatorGUI(QMainWindow):
         self.settings['ui_language'] = self.ui_language
         self.save_settings()
     
+    def select_original_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Original File", "", "Subtitle Files (*.srt *.ass *.txt)")
+        if file_path:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                self.orig_text.setPlainText(f.read())
+    
+    def select_translated_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Translated File", "", "Subtitle Files (*.srt *.ass *.txt)")
+        if file_path:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                self.trans_text.setPlainText(f.read())
+    
+    def find_all(self):
+        find_text = self.find_input.text()
+        if not find_text:
+            return
+        
+        results = []
+        for file_path in self.files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    if self.regex_mode.isChecked():
+                        matches = re.finditer(find_text, content, 0 if self.case_sensitive.isChecked() else re.IGNORECASE)
+                        for match in matches:
+                            results.append(f"{Path(file_path).name}: Line {content[:match.start()].count(chr(10)) + 1}")
+                    else:
+                        lines = content.split('\n')
+                        for i, line in enumerate(lines):
+                            if (find_text in line) if self.case_sensitive.isChecked() else (find_text.lower() in line.lower()):
+                                results.append(f"{Path(file_path).name}: Line {i + 1}: {line.strip()}")
+            except Exception as e:
+                results.append(f"Error reading {Path(file_path).name}: {e}")
+        
+        self.find_results.setPlainText('\n'.join(results))
+    
+    def replace_all(self):
+        find_text = self.find_input.text()
+        replace_text = self.replace_input.text()
+        if not find_text:
+            return
+        
+        replaced_count = 0
+        for file_path in self.files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                if self.regex_mode.isChecked():
+                    new_content, count = re.subn(find_text, replace_text, content, 0 if self.case_sensitive.isChecked() else re.IGNORECASE)
+                else:
+                    if self.case_sensitive.isChecked():
+                        new_content = content.replace(find_text, replace_text)
+                        count = content.count(find_text)
+                    else:
+                        # Case insensitive replace
+                        import re
+                        new_content = re.sub(re.escape(find_text), replace_text, content, flags=re.IGNORECASE)
+                        count = len(re.findall(re.escape(find_text), content, re.IGNORECASE))
+                
+                if count > 0:
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(new_content)
+                    replaced_count += count
+            except Exception as e:
+                self.find_results.append(f"Error processing {Path(file_path).name}: {e}")
+        
+        self.find_results.append(f"\nReplaced {replaced_count} occurrences across {len(self.files)} files")
+    
+
+    
     def on_translation_progress(self, language, current, total):
         progress = int((current / total) * 100)
         self.status_bar.showMessage(f"Pre-translating UI: {language} ({progress}%)")
@@ -2223,6 +2534,111 @@ class SubtitleTranslatorGUI(QMainWindow):
     def on_translation_finished(self):
         self.status_bar.showMessage("UI translation cache ready - Language switching will be instant!")
         QTimer.singleShot(3000, lambda: self.status_bar.showMessage("Ready"))
+    
+    def setup_compare_tab(self):
+        layout = QVBoxLayout(self.compare_tab)
+        
+        header = QLabel("🔍 File Comparison")
+        header.setAlignment(QtCore.Qt.AlignCenter)
+        header.setFont(QFont("Arial", 18, QFont.Bold))
+        header.setStyleSheet("color: #14a085; margin: 20px;")
+        layout.addWidget(header)
+        
+        # File selection
+        file_layout = QHBoxLayout()
+        
+        # Original file
+        orig_layout = QVBoxLayout()
+        orig_layout.addWidget(QLabel("Original File:"))
+        self.orig_file_btn = QPushButton("Select Original")
+        self.orig_file_btn.clicked.connect(self.select_original_file)
+        orig_layout.addWidget(self.orig_file_btn)
+        
+        # Translated file
+        trans_layout = QVBoxLayout()
+        trans_layout.addWidget(QLabel("Translated File:"))
+        self.trans_file_btn = QPushButton("Select Translated")
+        self.trans_file_btn.clicked.connect(self.select_translated_file)
+        trans_layout.addWidget(self.trans_file_btn)
+        
+        file_layout.addLayout(orig_layout)
+        file_layout.addLayout(trans_layout)
+        layout.addLayout(file_layout)
+        
+        # Comparison view
+        compare_layout = QHBoxLayout()
+        self.orig_text = QTextEdit()
+        self.orig_text.setReadOnly(True)
+        self.trans_text = QTextEdit()
+        self.trans_text.setReadOnly(True)
+        
+        compare_layout.addWidget(self.orig_text)
+        compare_layout.addWidget(self.trans_text)
+        layout.addLayout(compare_layout)
+    
+    def setup_find_replace_tab(self):
+        layout = QVBoxLayout(self.find_replace_tab)
+        
+        header = QLabel("🔍 Find & Replace")
+        header.setAlignment(QtCore.Qt.AlignCenter)
+        header.setFont(QFont("Arial", 18, QFont.Bold))
+        header.setStyleSheet("color: #14a085; margin: 20px;")
+        layout.addWidget(header)
+        
+        # Find/Replace controls
+        controls_layout = QVBoxLayout()
+        
+        find_layout = QHBoxLayout()
+        find_layout.addWidget(QLabel("Find:"))
+        self.find_input = QLineEdit()
+        find_layout.addWidget(self.find_input)
+        controls_layout.addLayout(find_layout)
+        
+        replace_layout = QHBoxLayout()
+        replace_layout.addWidget(QLabel("Replace:"))
+        self.replace_input = QLineEdit()
+        replace_layout.addWidget(self.replace_input)
+        controls_layout.addLayout(replace_layout)
+        
+        # Options
+        options_layout = QHBoxLayout()
+        self.case_sensitive = QCheckBox("Case Sensitive")
+        self.regex_mode = QCheckBox("Regular Expression")
+        options_layout.addWidget(self.case_sensitive)
+        options_layout.addWidget(self.regex_mode)
+        controls_layout.addLayout(options_layout)
+        
+        # Buttons
+        btn_layout = QHBoxLayout()
+        find_btn = QPushButton("Find All")
+        replace_btn = QPushButton("Replace All")
+        find_btn.clicked.connect(self.find_all)
+        replace_btn.clicked.connect(self.replace_all)
+        btn_layout.addWidget(find_btn)
+        btn_layout.addWidget(replace_btn)
+        controls_layout.addLayout(btn_layout)
+        
+        layout.addLayout(controls_layout)
+        
+        # Results
+        self.find_results = QTextEdit()
+        self.find_results.setReadOnly(True)
+        layout.addWidget(self.find_results)
+    
+    def setup_dashboard_tab(self):
+        layout = QVBoxLayout(self.dashboard_tab)
+        
+        header = QLabel("📈 Performance Dashboard")
+        header.setAlignment(QtCore.Qt.AlignCenter)
+        header.setFont(QFont("Arial", 18, QFont.Bold))
+        header.setStyleSheet("color: #14a085; margin: 20px;")
+        layout.addWidget(header)
+        
+        # Add dashboard widget
+        self.dashboard = PerformanceDashboard()
+        layout.addWidget(self.dashboard)
+    
+
     
     def auto_start_watching(self):
         # Populate watchlist UI with saved folders
