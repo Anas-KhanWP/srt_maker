@@ -1,8 +1,8 @@
 {
     "languages": {
-        "Afrikaans": "af",
         "Arabic": "ar",
         "Bengali": "bn",
+        "Chinese (Simplified)": "zh-CN",
         "Dutch": "nl",
         "Filipino": "tl",
         "German": "de",
@@ -21,6 +21,6 @@
     "move_original": true,
     "overwrite_existing": false,
     "batch_size": 60,
-    "retry_count": 3,
+    "retry_count": 1,
     "enable_cache": true
 }

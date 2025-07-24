@@ -230,7 +230,7 @@ class SubtitleTranslator:
         self.batch_size = 50
     
     def _load_cache(self):
-        cache_file = Path(f"cache_{self.dest_lang}.json")
+        cache_file = Path(f"./cache/cache_{self.dest_lang}.json")
         if cache_file.exists():
             try:
                 with open(cache_file, 'r', encoding='utf-8') as f:
@@ -241,10 +241,10 @@ class SubtitleTranslator:
     
     def _save_cache(self):
         try:
-            with open(f"cache_{self.dest_lang}.json", 'w', encoding='utf-8') as f:
+            with open(f"./cache/cache_{self.dest_lang}.json", 'w', encoding='utf-8') as f:
                 json.dump(self.cache, f, ensure_ascii=False)
         except Exception as e:
-            print(f"Error saving cache: {e}")
+            print(f"❌ Error saving cache: {e}")
     
     def _get_cache_key(self, text):
         return hashlib.md5(text.encode()).hexdigest()
@@ -254,62 +254,148 @@ class SubtitleTranslator:
         to_translate = []
         indices = []
         
+        # Creative header for batch processing
+        print(f"\n{'='*80}")
+        print(f"🌐 TRANSLATION BATCH: {len(texts)} entries → {self.dest_lang}")
+        print(f"{'='*80}")
+        
+        # Phase 1: Cache analysis
+        print(f"\n📊 PHASE 1: CACHE ANALYSIS")
+        print(f"{'─'*50}")
+        
+        cache_hits = 0
         for i, text in enumerate(texts):
             if not text.strip():
-                print(f"Skipping empty text at index {i}")
+                print(f"⚠️  Empty subtitle at position {i} - skipping")
                 results[i] = text
                 continue
             
-            # print(f"Processing text at index {i}: {text}")
             clean_text = text.split(":")[-1] if ":" in text else text
             cache_key = self._get_cache_key(clean_text)
-            # print(f"Cache key for index {i}: {cache_key}")
             
             if cache_key in self.cache:
-                # print(f"=================== Cache hit for index {i}: {clean_text} ===================")
+                cache_hits += 1
                 results[i] = self.cache[cache_key]
+                if i % 20 == 0 or i < 3:  # Show first few and occasional others
+                    print(f"💾 [{i:4d}] Cache hit: \"{clean_text[:30]}{'...' if len(clean_text) > 30 else ''}\"")
             else:
                 to_translate.append(clean_text)
                 indices.append(i)
         
+        # Cache statistics
+        if texts:
+            cache_ratio = cache_hits/len(texts)*100
+            print(f"\n📈 Cache efficiency: {cache_hits}/{len(texts)} entries ({cache_ratio:.1f}%)")
+            
+            if cache_ratio == 100:
+                print("✨ PERFECT CACHE HIT! No translation needed.")
+            elif cache_ratio > 80:
+                print("🚀 EXCELLENT CACHE PERFORMANCE!")
+            elif cache_ratio > 50:
+                print("👍 GOOD CACHE PERFORMANCE!")
+            elif cache_ratio > 20:
+                print("🔍 MODERATE CACHE UTILIZATION")
+            else:
+                print("🆕 MOSTLY NEW CONTENT")
+        
+        # Phase 2: Translation
         if to_translate:
+            print(f"\n🔄 PHASE 2: TRANSLATION")
+            print(f"{'─'*50}")
+            print(f"📦 Need to translate {len(to_translate)} entries")
+            
             for retry in range(3):
                 try:
-                    print(f"Translating {len(to_translate)} texts in batch... (attempt {retry + 1})")
+                    print(f"\n🚀 ATTEMPT {retry + 1} {'='*30}")
                     batch_text = "\n\n\n".join(to_translate)
+                    print(f"📤 Sending batch to Google Translate API...")
+                    
+                    # Show a simple spinner
+                    start_time = time.time()
                     translated_batch = self.translator.translate(batch_text)
+                    elapsed = time.time() - start_time
+                    
+                    print(f"📥 Response received in {elapsed:.2f}s")
                     translations = translated_batch.split("\n\n\n")
                     
                     if len(translations) != len(to_translate):
-                        print(f"Split mismatch: expected {len(to_translate)}, got {len(translations)}")
-                        translations = [self.translator.translate(text) for text in to_translate]
+                        print(f"\n⚠️  SPLIT MISMATCH DETECTED!")
+                        print(f"┌─ Expected: {len(to_translate)} segments")
+                        print(f"└─ Received: {len(translations)} segments")
+                        print(f"\n♻️  Switching to individual translation mode...")
+                        
+                        translations = []
+                        for i, text in enumerate(to_translate):
+                            print(f"   • Translating item {i+1}/{len(to_translate)}...", end="\r")
+                            translations.append(self.translator.translate(text))
+                        print("\n✅ Individual translations completed!")
+                    else:
+                        print(f"✅ Batch translation successful!")
+                    
+                    # Phase 3: Saving results
+                    print(f"\n💾 PHASE 3: SAVING RESULTS")
+                    print(f"{'─'*50}")
                     
                     for i, (idx, translation) in enumerate(zip(indices, translations)):
                         clean_translation = translation.strip()
                         results[idx] = clean_translation
                         cache_key = self._get_cache_key(to_translate[i])
                         self.cache[cache_key] = clean_translation
+                        
+                        # Show sample translations (first 3 and last 1)
+                        if i < 3 or i == len(indices) - 1:
+                            src_preview = to_translate[i][:30] + ('...' if len(to_translate[i]) > 30 else '')
+                            tgt_preview = clean_translation[:30] + ('...' if len(clean_translation) > 30 else '')
+                            print(f"   • \"{src_preview}\" → \"{tgt_preview}\"")
+                        elif i == 3 and len(indices) > 4:
+                            print(f"   • ... {len(indices) - 4} more translations ...")
+                    
+                    print(f"\n🎉 TRANSLATION COMPLETE!")
                     break
                     
                 except Exception as e:
-                    print(f"Translation error (attempt {retry + 1}): {e}")
+                    print(f"\n❌ ERROR: Translation failed (attempt {retry + 1})")
+                    print(f"   {str(e)}")
+                    
                     if retry < 2:
-                        time.sleep(2 ** retry)
+                        wait_time = 2 ** retry
+                        print(f"⏱️  Waiting {wait_time}s before retry...")
+                        time.sleep(wait_time)
                     else:
+                        print("❌ All attempts failed! Using original text.")
                         for i, idx in enumerate(indices):
-                            print(f"Single translation error (attempt {retry + 1}): {e}")
                             results[idx] = to_translate[i]
         
+        print(f"\n{'='*80}")
         return results
     
     def translate(self, text):
+        print(f"\n{'='*80}")
+        print(f"🔤 SINGLE TEXT TRANSLATION → {self.dest_lang}")
+        print(f"{'='*80}")
+        
         for retry in range(3):
             try:
-                return self.translator.translate(text)
+                print(f"🔄 Attempt {retry + 1}: Translating text...")
+                start_time = time.time()
+                result = self.translator.translate(text)
+                elapsed = time.time() - start_time
+                
+                print(f"✅ Translation successful in {elapsed:.2f}s!")
+                print(f"📝 Original: \"{text[:50]}{'...' if len(text) > 50 else ''}\"")
+                print(f"🌐 Result:   \"{result[:50]}{'...' if len(result) > 50 else ''}\"")
+                print(f"{'='*80}")
+                return result
+                
             except Exception as e:
-                print(f"Single translation error (attempt {retry + 1}): {e}")
+                print(f"❌ Translation error (attempt {retry + 1}): {e}")
                 if retry < 2:
-                    time.sleep(2 ** retry)
+                    wait_time = 2 ** retry
+                    print(f"⏱️  Waiting {wait_time}s before retry...")
+                    time.sleep(wait_time)
+        
+        print(f"⚠️  All translation attempts failed, returning original text")
+        print(f"{'='*80}")
         return text
 
 class TranslationWorker(QThread):
@@ -1063,7 +1149,7 @@ class SubtitleTranslatorGUI(QMainWindow):
         cache_size = 0
         cache_count = 0
         
-        for cache_file in Path('.').glob('cache_*.json'):
+        for cache_file in Path('./cache/').glob('cache_*.json'):
             try:
                 cache_size += cache_file.stat().st_size
                 cache_count += 1
@@ -1080,7 +1166,7 @@ class SubtitleTranslatorGUI(QMainWindow):
     def clear_cache(self):
         try:
             count = 0
-            for cache_file in Path('.').glob('cache_*.json'):
+            for cache_file in Path('./cache/').glob('cache_*.json'):
                 cache_file.unlink()
                 count += 1
             
@@ -1196,7 +1282,7 @@ class SubtitleTranslatorGUI(QMainWindow):
             self.worker.wait()
         
         # Cleanup cache files if they're too large
-        for cache_file in Path('.').glob('cache_*.json'):
+        for cache_file in Path('./cache/').glob('cache_*.json'):
             if cache_file.stat().st_size > 10*1024*1024:
                 cache_file.unlink()
         
