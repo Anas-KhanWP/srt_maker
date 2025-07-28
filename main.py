@@ -605,7 +605,15 @@ class SubtitleTranslator:
             self.is_offline = False
     
     def _load_cache(self):
-        cache_file = Path(f"./cache/cache_{self.dest_lang}.json")
+        # Use writable cache location
+        if getattr(sys, 'frozen', False):
+            cache_dir = Path(os.path.expanduser('~')) / 'AppData' / 'Local' / 'SRT_Maker' / 'cache'
+        else:
+            cache_dir = Path('./cache')
+        
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / f"cache_{self.dest_lang}.json"
+        
         if cache_file.exists():
             try:
                 with open(cache_file, 'r', encoding='utf-8') as f:
@@ -616,9 +624,19 @@ class SubtitleTranslator:
     
     def _save_cache(self):
         try:
-            with open(f"./cache/cache_{self.dest_lang}.json", 'w', encoding='utf-8') as f:
+            # Use same writable cache location
+            if getattr(sys, 'frozen', False):
+                cache_dir = Path(os.path.expanduser('~')) / 'AppData' / 'Local' / 'SRT_Maker' / 'cache'
+            else:
+                cache_dir = Path('./cache')
+            
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_file = cache_dir / f"cache_{self.dest_lang}.json"
+            
+            with open(cache_file, 'w', encoding='utf-8') as f:
                 json.dump(self.cache, f, ensure_ascii=False)
         except Exception as e:
+            # Cache errors are less critical, just log them
             print(f"❌ Error saving cache: {e}")
     
     def _get_cache_key(self, text):
@@ -1101,10 +1119,19 @@ class SubtitleTranslatorGUI(QMainWindow):
     
     def save_settings(self):
         try:
-            with open('settings.json', 'w') as f:
+            with open(self.settings_file, 'w') as f:
                 json.dump(self.settings, f, indent=4)
         except Exception as e:
-            print(f"Error saving settings: {e}")
+            # Try fallback location
+            try:
+                fallback_file = Path(os.path.expanduser('~')) / 'SRT_Maker_settings.json'
+                with open(fallback_file, 'w') as f:
+                    json.dump(self.settings, f, indent=4)
+                self.settings_file = fallback_file
+                self.status_bar.showMessage(f"Settings saved to: {fallback_file.name}")
+            except Exception as e2:
+                QMessageBox.critical(self, "Settings Error", f"Failed to save settings:\n{str(e2)}")
+                self.status_bar.showMessage("Failed to save settings")
     
     def save_profiles(self):
         self.settings['profiles'] = self.profiles
@@ -1513,10 +1540,23 @@ class SubtitleTranslatorGUI(QMainWindow):
         advanced_translation_layout.addLayout(service_layout)
         
         # GPU acceleration
+        gpu_layout = QHBoxLayout()
         self.use_gpu = QCheckBox("Use GPU Acceleration (if available)")
         self.use_gpu.setChecked(self.settings.get('use_gpu', False))
         self.use_gpu.setEnabled(GPU_AVAILABLE)
-        advanced_translation_layout.addWidget(self.use_gpu)
+        gpu_layout.addWidget(self.use_gpu)
+        
+        # GPU status indicator
+        gpu_status = QLabel()
+        if GPU_AVAILABLE:
+            gpu_status.setText("🟢 Running on GPU")
+            gpu_status.setStyleSheet("color: #14a085; font-weight: bold;")
+        else:
+            gpu_status.setText("🔴 GPU not available")
+            gpu_status.setStyleSheet("color: #d32f2f; font-weight: bold;")
+        gpu_layout.addWidget(gpu_status)
+        
+        advanced_translation_layout.addLayout(gpu_layout)
         
         # Offline mode
         self.offline_mode = QCheckBox("Offline Mode (no internet required)")
@@ -1874,39 +1914,52 @@ class SubtitleTranslatorGUI(QMainWindow):
         layout.addStretch()
     
     def select_single_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Subtitle File", "", 
-            "Subtitle Files (*.srt *.ass *.txt)")
-        if file_path:
-            self.files = [file_path]
-            self.file_label.setText(f"Selected: {Path(file_path).name}")
-            self.file_label.setStyleSheet("color: #14a085;")
-            self.output_folder = Path(file_path).parent
-            self.btn_open_output.setEnabled(True)
-            self.add_to_recent_files([file_path])
-            self.update_preview_files()
-            self.status_bar.showMessage(f"Selected file: {Path(file_path).name}")
+        try:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "Select Subtitle File", "", 
+                "Subtitle Files (*.srt *.ass *.txt)")
+            if file_path:
+                if not Path(file_path).exists():
+                    QMessageBox.warning(self, "File Error", "Selected file does not exist.")
+                    return
+                    
+                self.files = [file_path]
+                self.file_label.setText(f"Selected: {Path(file_path).name}")
+                self.file_label.setStyleSheet("color: #14a085;")
+                self.output_folder = Path(file_path).parent
+                self.btn_open_output.setEnabled(True)
+                self.add_to_recent_files([file_path])
+                self.update_preview_files()
+                self.status_bar.showMessage(f"Selected file: {Path(file_path).name}")
+        except Exception as e:
+            QMessageBox.critical(self, "File Selection Error", f"Failed to select file:\n{str(e)}")
+            self.status_bar.showMessage("File selection failed")
     
     def select_folder(self):
-        folder_path = QFileDialog.getExistingDirectory(self, "Select Folder")
-        if folder_path:
-            folder = Path(folder_path)
-            if not folder.exists():
-                folder.mkdir(parents=True, exist_ok=True)
-            
-            files = [str(f) for f in folder.iterdir() 
-                    if f.suffix.lower() in SUPPORTED_FORMATS]
-            if files:
-                self.files = files
-                self.file_label.setText(f"Selected: {len(files)} files from {folder.name}")
-                self.file_label.setStyleSheet("color: #14a085;")
-                self.output_folder = folder
-                self.btn_open_output.setEnabled(True)
-                self.add_to_recent_files(files)
-                self.update_preview_files()
-                self.status_bar.showMessage(f"Selected {len(files)} files from {folder.name}")
-            else:
-                QMessageBox.warning(self, "No Files", "No subtitle files found in the selected folder.")
+        try:
+            folder_path = QFileDialog.getExistingDirectory(self, "Select Folder")
+            if folder_path:
+                folder = Path(folder_path)
+                if not folder.exists():
+                    QMessageBox.warning(self, "Folder Error", "Selected folder does not exist.")
+                    return
+                
+                files = [str(f) for f in folder.iterdir() 
+                        if f.suffix.lower() in SUPPORTED_FORMATS]
+                if files:
+                    self.files = files
+                    self.file_label.setText(f"Selected: {len(files)} files from {folder.name}")
+                    self.file_label.setStyleSheet("color: #14a085;")
+                    self.output_folder = folder
+                    self.btn_open_output.setEnabled(True)
+                    self.add_to_recent_files(files)
+                    self.update_preview_files()
+                    self.status_bar.showMessage(f"Selected {len(files)} files from {folder.name}")
+                else:
+                    QMessageBox.warning(self, "No Files", "No subtitle files found in the selected folder.")
+        except Exception as e:
+            QMessageBox.critical(self, "Folder Selection Error", f"Failed to select folder:\n{str(e)}")
+            self.status_bar.showMessage("Folder selection failed")
     
     # These methods are no longer needed as we process all languages
     # Kept as empty methods in case they're called elsewhere
@@ -1921,14 +1974,25 @@ class SubtitleTranslatorGUI(QMainWindow):
         return self.enabled_languages
     
     def load_settings(self):
-        # Try to load from settings.json file, or use defaults
-        settings_file = Path('settings.json')
+        # Use AppData directory for settings in installed version
+        if getattr(sys, 'frozen', False):
+            # Running as executable
+            settings_dir = Path(os.path.expanduser('~')) / 'AppData' / 'Local' / 'SRT_Maker'
+            settings_dir.mkdir(parents=True, exist_ok=True)
+            settings_file = settings_dir / 'settings.json'
+        else:
+            # Running as script
+            settings_file = Path('./settings.json')
+            
         if settings_file.exists():
             try:
                 with open(settings_file, 'r') as f:
                     return json.load(f)
             except Exception as e:
                 print(f"Error loading settings: {e}")
+        
+        # Store settings file path for saving
+        self.settings_file = settings_file
         
         # Default settings
         return {
@@ -1952,11 +2016,10 @@ class SubtitleTranslatorGUI(QMainWindow):
         }
     
     def load_enabled_languages(self):
-        # Try to load from settings.json file, or use defaults
-        settings_file = Path('settings.json')
-        if settings_file.exists():
+        # Use same settings file as load_settings
+        if hasattr(self, 'settings_file') and self.settings_file.exists():
             try:
-                with open(settings_file, 'r') as f:
+                with open(self.settings_file, 'r') as f:
                     settings = json.load(f)
                     return settings.get('languages', DEFAULT_LANGUAGES)
             except Exception as e:
@@ -2049,12 +2112,19 @@ class SubtitleTranslatorGUI(QMainWindow):
         cache_size = 0
         cache_count = 0
         
-        for cache_file in Path('./cache/').glob('cache_*.json'):
-            try:
-                cache_size += cache_file.stat().st_size
-                cache_count += 1
-            except:
-                pass
+        # Use correct cache location
+        if getattr(sys, 'frozen', False):
+            cache_dir = Path(os.path.expanduser('~')) / 'AppData' / 'Local' / 'SRT_Maker' / 'cache'
+        else:
+            cache_dir = Path('./cache')
+        
+        if cache_dir.exists():
+            for cache_file in cache_dir.glob('cache_*.json'):
+                try:
+                    cache_size += cache_file.stat().st_size
+                    cache_count += 1
+                except:
+                    pass
         
         if cache_size > 1024 * 1024:
             size_str = f"{cache_size / (1024 * 1024):.2f} MB"
@@ -2066,9 +2136,16 @@ class SubtitleTranslatorGUI(QMainWindow):
     def clear_cache(self):
         try:
             count = 0
-            for cache_file in Path('./cache/').glob('cache_*.json'):
-                cache_file.unlink()
-                count += 1
+            # Use correct cache location
+            if getattr(sys, 'frozen', False):
+                cache_dir = Path(os.path.expanduser('~')) / 'AppData' / 'Local' / 'SRT_Maker' / 'cache'
+            else:
+                cache_dir = Path('./cache')
+            
+            if cache_dir.exists():
+                for cache_file in cache_dir.glob('cache_*.json'):
+                    cache_file.unlink()
+                    count += 1
             
             self.update_cache_info()
             QMessageBox.information(self, "Cache Cleared", f"Successfully cleared {count} cache files.")

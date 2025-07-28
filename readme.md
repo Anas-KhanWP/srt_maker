@@ -1,35 +1,38 @@
-# 🎬 SRT Maker – Advanced Subtitle Translation & Conversion
+# 🎬 SRT Maker – Professional Subtitle Translation Tool
 
-> **Professional subtitle translation tool with multi-language support, folder monitoring, and intelligent caching**
+> **Advanced subtitle translation with offline AI models, GPU acceleration, and intelligent caching**
 
 ---
 
 ## 📚 Table of Contents
 
 - [🚀 Project Purpose](#-project-purpose)
-- [✨ Advanced Features](#-advanced-features)
+- [✨ Key Features](#-key-features)
 - [🛠️ Tech Stack](#️-tech-stack)
-- [🧑‍💻 Installation & Usage](#-installation--usage)
-- [⚙️ Advanced Configuration](#️-advanced-configuration)
+- [📦 Installation](#-installation)
+- [🧑‍💻 Usage Guide](#-usage-guide)
+- [⚙️ Configuration](#️-configuration)
+- [🤖 AI Translation Models](#-ai-translation-models)
 - [⌨️ Keyboard Shortcuts](#️-keyboard-shortcuts)
 - [🌐 Multi-Language UI](#-multi-language-ui)
 - [📂 Project Structure](#-project-structure)
-- [👥 Contribution Guidelines](#-contribution-guidelines)
-- [📄 License & Attribution](#-license--attribution)
+- [🔧 Building from Source](#-building-from-source)
+- [👥 Contributing](#-contributing)
+- [📄 License](#-license)
 
 ---
 
 ## 🚀 Project Purpose
 
 **What It Does:**  
-SRT Maker is a professional desktop application that batch-translates and converts subtitle files (`.srt`, `.ass`, `.txt`) into multiple languages using Google Translate API, with advanced features like folder monitoring, translation profiles, and intelligent caching.
+SRT Maker is a professional desktop application that translates subtitle files (`.srt`, `.ass`, `.txt`) into 100+ languages using both online APIs and offline AI models, with GPU acceleration, intelligent caching, and automated workflows.
 
 **Why It Matters:**  
-Manual subtitle translation is time-consuming and error-prone. SRT Maker automates the entire workflow with professional-grade features, making multilingual content creation efficient and scalable for creators, educators, and media professionals.
+Creating multilingual content manually is time-consuming and expensive. SRT Maker automates subtitle translation with professional-grade features, making global content accessible for creators, educators, and media professionals.
 
 ---
 
-## ✨ Advanced Features
+## ✨ Key Features
 
 ### 🌍 **Translation Engine**
 - **100+ Languages:** Support for all Google Translate languages
@@ -74,35 +77,72 @@ Manual subtitle translation is time-consuming and error-prone. SRT Maker automat
 ![PyQt5](https://img.shields.io/badge/PyQt5-5.15.11-green)
 ![deep-translator](https://img.shields.io/badge/deep--translator-1.11.4-yellow)
 ![pysrt](https://img.shields.io/badge/pysrt-1.1.2-orange)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.1.2-red)
+![Transformers](https://img.shields.io/badge/Transformers-4.36.2-orange)
 
 - **Python 3.11+** – Core application framework
-- **PyQt5** – Advanced GUI framework with custom layouts
+- **PyQt5** – Professional GUI with dark theme
+- **PyTorch** – GPU acceleration for offline models
+- **Transformers** – Hugging Face AI translation models
 - **deep-translator** – Google Translate API integration
 - **pysrt** – Professional SRT file handling
-- **ass** – Advanced SubStation Alpha subtitle parsing
+- **matplotlib** – Performance analytics and charts
 
 ---
 
-## 🧑‍💻 Installation & Usage
+## 📦 Installation
 
-### 1. Clone the Repository
+### 🚀 **Option 1: Windows Installer (Recommended)**
+
+1. Download `SRT_Maker_Installer.exe` from releases
+2. Run installer as administrator
+3. Choose to install PyTorch with CUDA for GPU acceleration
+4. Launch from Start Menu or Desktop shortcut
+
+### 🛠️ **Option 2: Manual Setup**
 
 ```bash
+# Clone repository
 git clone https://github.com/Anas-KhanWP/srt_maker.git
 cd srt_maker
-```
 
-### 2. Install Dependencies
+# Run setup script (installs Python if needed)
+setup.bat
 
-```bash
+# Or install manually
 pip install -r requirements.txt
-```
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
-### 3. Run The Application
-
-```bash
+# Run application
 python main.py
 ```
+
+## 🤖 AI Translation Models
+
+### 🌐 **Google Translate (Recommended)**
+- **Languages:** 100+ supported languages
+- **Quality:** High accuracy for most language pairs
+- **Speed:** Fast API-based translation
+- **Requirements:** Internet connection
+- **Cost:** Free with rate limits
+
+### 🖥️ **Marian MT (Offline)**
+- **Languages:** Common language pairs (en-es, en-fr, etc.)
+- **Quality:** Good for supported pairs
+- **Speed:** Fast with GPU acceleration
+- **Requirements:** ~500MB per language pair
+- **Cost:** Free, no internet needed
+
+### ⚙️ **Opus-MT (Offline)**
+- **Languages:** Alternative offline models
+- **Quality:** Varies by language pair
+- **Speed:** Moderate processing speed
+- **Requirements:** Model downloads
+- **Cost:** Free offline processing
+
+---
+
+## 🧑‍💻 Usage Guide
 
 ### 4. Quick Start Guide
 
@@ -204,7 +244,37 @@ srt_maker/
 
 ---
 
-## 👥 Contribution Guidelines
+## 🔧 Building from Source
+
+### 📦 **Create Installer**
+```bash
+# Build Windows installer with NSIS
+build_installer.bat
+
+# Creates: SRT_Maker_Installer.exe
+```
+
+### 💾 **Create Portable Version**
+```bash
+# Build standalone executable
+build.bat
+
+# Creates: dist/SRT_Maker.exe
+```
+
+### 🛠️ **Development Setup**
+```bash
+# Install development dependencies
+pip install pyinstaller
+pip install auto-py-to-exe
+
+# Run from source
+python main.py
+```
+
+---
+
+## 👥 Contributing
 
 ### **Getting Started**
 1. Fork the repository
@@ -226,21 +296,21 @@ srt_maker/
 
 ---
 
-## 📄 License & Attribution
+## 📄 License
 
-### **License**
-MIT License - see LICENSE file for details
+### **MIT License**
+This project is licensed under the MIT License - see LICENSE file for details.
 
-### **Credits & Dependencies**
+### **Dependencies**
 - **Google Translate API** via deep-translator
-- **PyQt5** for advanced GUI framework
-- **pysrt** for professional SRT file handling
-- **ass** for Advanced SubStation Alpha parsing
-- **Community Contributors** for testing and feedback
+- **Helsinki-NLP Models** for offline translation
+- **PyQt5** for professional GUI framework
+- **PyTorch** for GPU acceleration
+- **Hugging Face Transformers** for AI models
 
 ### **Acknowledgments**
-Special thanks to the open-source community for the excellent libraries that make this project possible.
+Thanks to the open-source AI and translation communities for making multilingual content accessible.
 
 ---
 
-**Made with ❤️ for the global subtitle translation community**
+**Made with ❤️ for creators, educators, and the global community**

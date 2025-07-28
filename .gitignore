@@ -4,3 +4,7 @@ settings.json
 profiles.json
 recent_files.json
 *.json
+dist
+build
+*.zip
+*.exe
