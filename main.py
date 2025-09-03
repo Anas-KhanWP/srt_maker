@@ -735,6 +735,9 @@ class SubtitleTranslator:
                     
                     for i, (idx, translation) in enumerate(zip(indices, translations)):
                         clean_translation = translation.strip()
+                        # Fix escaped newlines and other common issues
+                        clean_translation = clean_translation.replace('\\n', '\n').replace('\\r', '\r')
+                        clean_translation = clean_translation.replace('\\t', '\t')
                         results[idx] = clean_translation
                         cache_key = self._get_cache_key(to_translate[i])
                         self.cache[cache_key] = clean_translation
@@ -780,6 +783,9 @@ class SubtitleTranslator:
                     result = self.translator.translate(text, self.dest_lang, 'en')
                 else:
                     result = self.translator.translate(text)
+                
+                # Fix escaped newlines and other common issues
+                result = result.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t')
                     
                 elapsed = time.time() - start_time
                 
