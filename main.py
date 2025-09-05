@@ -663,7 +663,7 @@ class SubtitleTranslator:
                 results[i] = text
                 continue
             
-            clean_text = text.split(":")[-1] if ":" in text else text
+            clean_text = text.split(":")[1].strip() if ":" in text else text
             cache_key = self._get_cache_key(clean_text)
             
             if cache_key in self.cache:
@@ -671,7 +671,7 @@ class SubtitleTranslator:
                 if self.stats:
                     self.stats.cache_hits += 1
                 results[i] = self.cache[cache_key]
-                if i % 20 == 0 or i < 3:  # Show first few and occasional others
+                if i % 20 == 0 or i < 3:
                     print(f"💾 [{i:4d}] Cache hit: \"{clean_text[:30]}{'...' if len(clean_text) > 30 else ''}\"")
             else:
                 if self.stats:
@@ -908,20 +908,29 @@ class TranslationWorker(QThread):
                     self.progress.emit(f"❌ {language} failed: {str(e)}")
         
         if not self.is_stopped:
-            # Move or copy original file based on settings
+            # Create copy with colons removed and move copy instead of original
             try:
-                if self.settings.get('organize_by_file', True) and self.settings.get('move_original', True):
-                    original_in_folder = output_folder / path.name
-                    shutil.move(str(path), str(original_in_folder))
-                    print(f"📎 Moved original file to: {original_in_folder}")
-                elif self.settings.get('organize_by_file', True) and not self.settings.get('move_original', True):
-                    original_in_folder = output_folder / path.name
-                    shutil.copy2(str(path), str(original_in_folder))
-                    print(f"📎 Copied original file to: {original_in_folder}")
+                if self.settings.get('organize_by_file', True):
+                    # Read original file
+                    with open(path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    # Remove colons from content
+                    modified_content = '\n'.join(
+                        line.split(':', 1)[1].strip() if ':' in line else line 
+                        for line in content.split('\n')
+                    )
+                    
+                    # Create modified copy
+                    modified_file = output_folder / path.name
+                    with open(modified_file, 'w', encoding='utf-8') as f:
+                        f.write(modified_content)
+                    
+                    print(f"📎 Created modified copy (no colons) at: {modified_file}")
             except Exception as e:
-                print(f"⚠️ Could not handle original file: {e}")
+                print(f"⚠️ Could not create modified copy: {e}")
             
-            self.progress.emit(f"🎉 Completed: {path.name}")
+            self.progress.emit(f"🎉 Completed: {path.name} (original preserved)")
     
     def translate_srt(self, input_file, output_file, translator):
         subs = pysrt.open(input_file)
